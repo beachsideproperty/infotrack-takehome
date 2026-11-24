@@ -1,7 +1,7 @@
 using BookFinder.Api.Configuration;
 using Microsoft.AspNetCore.Mvc.Testing;
 
-namespace BookFinder.Tests;
+namespace BookFinder.Tests.Endpoints;
 
 public class CorsTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
 {

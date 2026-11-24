@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using BookFinder.Api.Configuration;
 using BookFinder.Api.Endpoints;
+using BookFinder.Api.Errors;
 using BookFinder.Application;
 using BookFinder.Infrastructure;
 
@@ -16,6 +17,7 @@ if (builder.Configuration["PORT"] is { Length: > 0 } port)
 builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull);
 builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddConfiguredCors();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -27,6 +29,7 @@ app.UseStatusCodePages();
 app.UseCors();
 
 app.MapHealthEndpoints();
+app.MapSearchEndpoints();
 
 app.Run();
 

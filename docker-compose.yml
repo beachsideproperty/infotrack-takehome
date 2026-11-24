@@ -9,6 +9,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-}
       OPENLIBRARY_CONTACT_EMAIL: ${OPENLIBRARY_CONTACT_EMAIL:-}
     healthcheck:
       # The aspnet image has no curl; bash's /dev/tcp is enough to see the port is up.

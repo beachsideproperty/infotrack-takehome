@@ -4,10 +4,10 @@ Paste a messy blob of whatever you remember about a book (a title, an author, a 
 
 InfoTrack "Find That Book" take-home. React + TypeScript frontend, .NET 10 Web API, Gemini for parsing and explanations, Open Library for book data.
 
-- **Live demo:** _coming soon_ (web on Vercel, API on Render)
-- **API health:** _coming soon_
+- **Live demo:** https://infotrack-takehome.vercel.app (web on Vercel)
+- **API health:** https://infotrack-takehome.onrender.com/health (API on Render, free tier: the first request after idling can take ~50 s)
 
-> **Status:** phase 1 (scaffold and deploy). The search pipeline lands in the next phase; this README grows with it.
+> **Status:** work in progress. The search API (`POST /api/search`) is complete and tested; the search UI is being built next. Until then, try the API with the `curl` examples below.
 
 ## Why .NET 10 and not .NET 8
 
@@ -21,12 +21,22 @@ The brief asks for .NET 8. .NET 8 reached end of support on Nov 10, 2026, and .N
 | .NET SDK | 10.0 (pinned in `api/global.json`) | running the API without Docker, tests |
 | Node.js | 22+ | running the web app without Docker |
 
+## Gemini API key
+
+1. Create a free key at https://aistudio.google.com/app/apikey.
+2. Give it to the API one of these ways:
+   - **Without Docker:** `cd api/src/BookFinder.Api && dotnet user-secrets set GEMINI_API_KEY "<your key>"`
+   - **With Docker:** put `GEMINI_API_KEY=<your key>` in `.env` (copied from `.env.example`).
+   - **Render:** add `GEMINI_API_KEY` under Environment.
+
+No key? The API still runs: it falls back to a rule-based parser and template explanations, and responses say `"parser": "fallback"`. Optionally set `OPENLIBRARY_CONTACT_EMAIL` too, which identifies the app to Open Library and raises its rate limit from 1 to 3 requests per second.
+
 ## Run locally
 
 ### With Docker
 
 ```bash
-cp .env.example .env          # optional for now; fill GEMINI_API_KEY from phase 2
+cp .env.example .env          # then fill in GEMINI_API_KEY
 docker compose up --build
 ```
 
@@ -54,19 +64,33 @@ npm run dev
 
 The web app calls `http://localhost:8080` by default. To point it elsewhere, create `web/.env.local` with `VITE_API_URL=...`.
 
+Try a search:
+
+```bash
+curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"query":"tolkien hobbit illustrated deluxe 1937"}'
+```
+
 ### Tests
 
 ```bash
-cd api && dotnet test
+cd api && dotnet test        # 133 tests, offline, ~1 s
 cd web && npm run build      # type-check + production build
+```
+
+Refresh the recorded Open Library responses used by the golden tests (hits the live API, politely paced):
+
+```bash
+cd api && RECORD_FIXTURES=1 dotnet test --filter Category=Golden
 ```
 
 ## Configuration
 
 | Variable | Where | Purpose |
 |---|---|---|
-| `GEMINI_API_KEY` | API | Gemini key (from phase 2). Locally: `dotnet user-secrets` or `.env` for Docker |
-| `OPENLIBRARY_CONTACT_EMAIL` | API | Contact in the Open Library User-Agent (from phase 2) |
+| `GEMINI_API_KEY` | API | Gemini key. Locally: `dotnet user-secrets` or `.env` for Docker |
+| `GEMINI_MODEL` | API | Optional. Default `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | API | Optional. Tried when the first model fails. Default `gemini-3.1-flash-lite` |
+| `OPENLIBRARY_CONTACT_EMAIL` | API | Contact in the Open Library User-Agent (3 req/s instead of 1) |
 | `ALLOWED_ORIGINS` | API | Comma-separated origins allowed by CORS, no trailing slash |
 | `PORT` | API | Port to bind on `0.0.0.0`. Render sets it (default 10000) |
 | `VITE_API_URL` | Web | API base URL. Baked in at build time, so never put secrets here |
@@ -77,11 +101,11 @@ See `.env.example`.
 
 ```
 api/                         .NET 10 solution (BookFinder.sln) + Dockerfile
-  src/BookFinder.Api           Minimal API endpoints, DI, CORS, ProblemDetails, /health
-  src/BookFinder.Application   Search orchestration, ranking, interfaces
-  src/BookFinder.Domain        Domain records
-  src/BookFinder.Infrastructure  Gemini + Open Library clients, caching
-  tests/BookFinder.Tests       xUnit tests (WebApplicationFactory for API tests)
+  src/BookFinder.Api             Endpoints, request validation, ProblemDetails, CORS, DI
+  src/BookFinder.Application     SearchService, matching hierarchy, ranker, fallback parser, templates (pure code)
+  src/BookFinder.Domain          Records: hypotheses, candidates, tiers, outcomes
+  src/BookFinder.Infrastructure  Open Library client (rate limit, cache, retry), Gemini client (model fallback)
+  tests/BookFinder.Tests         Unit, golden-query, client and API tests + recorded Open Library JSON
 web/                         Vite + React + TypeScript + Tailwind v4
 docker-compose.yml
 ```
@@ -91,30 +115,114 @@ docker-compose.yml
 | Method | Path | Response |
 |---|---|---|
 | GET | `/health` | `200 { "status": "ok", "version": "0.1.0", "commit": "abc1234" }` (`commit` only on Render) |
+| POST | `/api/search` | `200` search outcome (below); `400` bad input; `502` Open Library down; `503` Open Library rate-limiting |
 
-Errors use RFC 7807 ProblemDetails.
+```jsonc
+// POST /api/search  { "query": "tolkien hobbit illustrated deluxe 1937" }
+{
+  "query": "tolkien hobbit illustrated deluxe 1937",
+  "interpretedAs": [{ "title": "The Hobbit", "author": "J.R.R. Tolkien", "keywords": ["illustrated", "deluxe"], "year": 1937, "isSeries": false }],
+  "mode": "match",                 // "match" | "authorOnly" | "noMatch"
+  "hasBestMatch": true,            // show a hero card only when true
+  "parser": "llm",                 // "llm" | "fallback"
+  "explanations": "llm",           // "llm" | "template"
+  "results": [
+    {
+      "title": "The Hobbit",
+      "authors": ["J.R.R. Tolkien"],          // primary authors, from the work record
+      "contributors": [],                      // other names Open Library attaches to the work
+      "firstPublishYear": 1937,
+      "openLibraryId": "OL27482W",
+      "url": "https://openlibrary.org/works/OL27482W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14627509-L.jpg",
+      "matchTier": "A",
+      "explanation": "Exact title match; Tolkien is the primary author on the work record; first published in 1937, the year you gave."
+    },
+    {                                          // abbreviated
+      "title": "The Hobbit",
+      "authors": ["Charles Dixon", "Sean Deming", "J.R.R. Tolkien"],
+      "matchTier": "B",
+      "explanation": "Exact title, but Charles Dixon is listed first on this version; J.R.R. Tolkien is credited after them, so it ranks below the original."
+    }
+  ]
+}
+```
+
+- Fields with no value are left out (a missing `firstPublishYear` is never `0`). `didYouMean: { title, author }` appears only on `noMatch`.
+- The brief's sample uses `author` (string) and `first_publish_year`; this API returns `authors[]` (a work can have several) and camelCase, the .NET and TypeScript convention.
+- Errors are RFC 7807 ProblemDetails. Validation errors carry the message to show under the input in `detail` and `errors.query`:
+  - empty: "Type a title, an author or a few words you remember."
+  - over 300 characters: "That's a lot to go on. Try the few words you're surest about."
 
 ## Deployment
 
-- **API on Render:** Web Service, Docker runtime, root directory `api`, health check `/health`. Env vars: `ALLOWED_ORIGINS`, `OPENLIBRARY_CONTACT_EMAIL`, later `GEMINI_API_KEY`.
+- **API on Render:** Web Service, Docker runtime, root directory `api`, health check `/health`. Env vars: `GEMINI_API_KEY`, `OPENLIBRARY_CONTACT_EMAIL`, `ALLOWED_ORIGINS`.
 - **Web on Vercel:** root directory `web`, Vite preset, env `VITE_API_URL=https://<service>.onrender.com`.
 - Render's free tier sleeps when idle. The first request can take ~50 s, which the "Waking up the server…" pill covers.
 
 ## Implementation overview
 
-_To come with the search pipeline (phase 2)._
+**The LLM reads and explains; code decides.** Gemini turns the messy text into hypotheses and writes the one-line reasons. Plain, deterministic code searches Open Library, applies the matching hierarchy and ranks, so ranking is unit-tested and still works when Gemini is down.
+
+```
+query ─▶ validate (1–300 chars)
+      ─▶ Gemini: 0–3 hypotheses { title?, author?, keywords[], year?, isSeries }   ── fails? ─▶ rule-based parser
+      ─▶ no title or author in any hypothesis?  ─▶ noMatch ("pizza recipe"), no Open Library calls
+      ─▶ author only?  ─▶ resolve author key ─▶ search.json?author_key=…&sort=readinglog ─▶ tier D
+      ─▶ otherwise: search.json per hypothesis (parallel) ─▶ dedupe ─▶ provisional rank
+                    ─▶ works/{id}.json for the top 5 (primary authors) ─▶ classify A–E ─▶ rank
+      ─▶ Gemini: one batched call writes all explanations                          ── fails? ─▶ templates
+```
+
+**Matching hierarchy** (`TierClassifier`, `Ranker`):
+
+| Tier | Meaning |
+|---|---|
+| A | Exact title (after normalizing) and a primary author from the work record |
+| B | Exact title, but the author is only a contributor |
+| C | Near title (typos, reordering, series member) and the author matches |
+| D | Author-only query: that author's most-read works |
+| E | Weaker: only the title or only the author matches; box sets and omnibuses |
+
+Within a tier: the year named in the query → the matched author's place on the work record → exact over near title → likelier hypothesis → Open Library reading-log count → edition count → work key. The same input always produces the same order (tested by shuffling).
+
+**Normalizing:** Unicode NFKD, accents and punctuation stripped, lowercase, leading article dropped. Title variants split on `:`, `;`, `, or`, ` (`, ` - `, so "The Hobbit, or There and Back Again" matches "the hobbit". Author names match on surname plus compatible given names or initials ("J.R.R. Tolkien" = "John Ronald Reuel Tolkien"; "Charles Dickens" ≠ "Monica Dickens").
+
+**Open Library budget:** one `search.json` per hypothesis (max 3), `works/{id}.json` for the top 5 only, `authors/{id}.json` only when a name is missing. A process-wide token bucket keeps us at 3 requests/second with an identified User-Agent (1/s without), responses are cached by URL, each call times out at 6 s and is retried once. A new query costs about 6–8 Open Library calls and two Gemini calls, typically 3–6 s; repeats are faster thanks to the cache.
 
 ## Assumptions and design decisions
 
-_To come._
+- **Accuracy over speed.** Each top candidate's work record is fetched to separate primary authors from contributors, as the brief requires. That costs a couple of seconds under Open Library's rate limit; caching and the staged loading state cover it. With more time: stream partial results.
+- **Primary authors and adaptations.** Open Library's `works.authors` has no roles: Charles Dixon's graphic-novel *Hobbit* lists Dixon, Deming and Tolkien as equal authors. Rule: everyone on the work record is a primary author, and names only in search results are contributors. Then, when another work with the same title lists the queried author *first*, versions that list them later are treated as someone else's adaptation: the author counts as a contributor there (tier B). That reproduces the brief's example ("Tolkien is primary author; Dixon listed as adaptor") without guessing roles, and leaves genuine co-authors (*Good Omens*) at tier A.
+- **Duplicate work records.** Open Library often has several works for one book (five *Adventures of Huckleberry Finn* by Mark Twain, "… - Ukrainian Edition"). Works with the same base title and lead author collapse to the strongest, most-read one.
+- **Series and box sets.** Gemini flags series queries ("harry potter"): the books in the series are listed with no best match, and the explanations say why. Box sets, omnibuses and multi-title volumes are capped at tier E because the brief asks for works.
+- **Best-match card is earned.** `hasBestMatch` is true only when the top result is tier A–C and beats the runner-up on match strength, or is equally strong but read 5× more. Never for series, author-only or weak matches.
+- **Author-only popularity.** `search.json?author_key=…&sort=readinglog` (most reading-log entries first) replaces `/authors/{id}/works.json`, which can't sort by popularity. The author key comes from the full name Gemini supplies ("dickens" alone ranks Monica Dickens first in Open Library's author search).
+- **Years.** A year breaks ties and is cited in the explanation. Code keeps a year only if it appears in the query and isn't part of the title ("1984 by orwell"), so the model can't invent one. Edition words ("illustrated", "deluxe") are ignored, since results are works, not editions.
+- **Never an LLM-only guess.** Every result comes from Open Library. Gemini only proposes what to search for and phrases the explanation; its output is schema-constrained, trimmed and capped, and the explanation prompt only sees fields we fetched plus how code classified the match. The year is sent to it only when it matched.
+- **Prompt injection.** The query is passed as a JSON string labelled as data, the system prompt says to ignore instructions inside it, and the response must match a JSON schema. The worst a malicious query can do is produce odd hypotheses, which then have to match real Open Library records.
+- **Gemini model choice.** Measured on Nov 24, 2026 on the free tier: `gemini-3.8-flash` timed out, returned 503 or was rate-limited on every call, while `gemini-3.5-flash-lite` answered in about 1 s and read every golden query correctly. So Flash-Lite is the default, with a second model as fallback (each model has its own quota). The first model gets at most 4 s so the fallback has time; parsing has an 8 s budget and explanations 6 s before the rule-based parser or templates take over. Both models are configurable.
+- **No database.** Open Library responses are cached in memory per instance (6 hours).
 
 ## Features
 
-_To come._
+- One input for any mix of title, author, character, year and noise, with typo and diacritics tolerance.
+- Gemini hypotheses (up to 3), including titles from character hints ("austen bennet" → *Pride and Prejudice*) and published title forms ("1984" → *Nineteen Eighty-Four*).
+- The brief's A–E matching hierarchy with primary-author resolution from work records, adaptation detection, duplicate-work collapsing, series and box-set handling.
+- Author-only queries return the author's most-read works.
+- A grounded one-sentence explanation per result (Gemini, or deterministic templates).
+- Graceful degradation: Gemini down → rule-based parser + templates; Open Library slow → one retry, then a clear 502.
 
 ## Testing strategy
 
-_To come._
+`cd api && dotnet test` runs 133 tests offline in about a second. No test calls Gemini or the network.
+
+| Layer | What's covered |
+|---|---|
+| Unit | Normalizer, title variants and near matches, author name matching, every tier A–E, adaptation demotion, collections, series, ranker order and determinism, best-match rule, fallback parser, template sentences |
+| Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
+| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
+| API | `WebApplicationFactory` with fakes: response contract, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
 
 ## Future improvements
 

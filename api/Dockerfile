@@ -20,7 +20,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Render's default port; Program.cs binds 0.0.0.0:$PORT.
+# ASPNETCORE_HTTP_PORTS is cleared so the base image's 8080 default doesn't compete with PORT.
 ENV PORT=10000 \
+    ASPNETCORE_HTTP_PORTS= \
     ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_CLI_TELEMETRY_OPTOUT=1
 EXPOSE 10000

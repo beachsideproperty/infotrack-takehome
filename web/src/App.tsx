@@ -22,7 +22,7 @@ export default function App() {
           Type whatever you remember: a title, an author, a character, a year. Messy is fine.
         </p>
         <div className="mt-4 rounded-xl border border-line bg-card p-5 text-ink-soft">
-          Search is coming in the next phase. For now this page just checks that the API is reachable.
+          Search isn’t wired up yet. For now this page checks that the API is reachable.
         </div>
       </main>
 
