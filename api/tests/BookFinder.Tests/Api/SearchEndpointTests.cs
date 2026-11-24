@@ -55,6 +55,18 @@ public class SearchEndpointTests(WebApplicationFactory<Program> factory) : IClas
         Assert.StartsWith("https://covers.openlibrary.org/b/id/", top.GetProperty("coverUrl").GetString());
         Assert.Equal("LLM says The Hobbit.", top.GetProperty("explanation").GetString());
         Assert.Equal(JsonValueKind.Array, top.GetProperty("contributors").ValueKind);
+
+        var match = top.GetProperty("match");
+        Assert.Equal("exact", match.GetProperty("title").GetString());
+        Assert.Equal("primary", match.GetProperty("author").GetString());
+        Assert.True(match.GetProperty("yearMatched").GetBoolean());
+        Assert.False(match.GetProperty("keywordOnly").GetBoolean());
+
+        // Dixon's graphic novel: Tolkien credited after Dixon → contributor, flagged as a derivative version.
+        var dixon = root.GetProperty("results").EnumerateArray().Single(r => r.GetProperty("authors")[0].GetString() == "Charles Dixon");
+        Assert.Equal("B", dixon.GetProperty("matchTier").GetString());
+        Assert.Equal("contributor", dixon.GetProperty("match").GetProperty("author").GetString());
+        Assert.True(dixon.GetProperty("match").GetProperty("derivative").GetBoolean());
     }
 
     [Theory]

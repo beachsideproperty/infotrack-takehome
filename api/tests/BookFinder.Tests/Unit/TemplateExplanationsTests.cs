@@ -43,6 +43,19 @@ public class TemplateExplanationsTests
         Assert.Contains(expected, TemplateExplanations.For(ranked, null, position));
     }
 
+    [Theory]
+    [InlineData("To the Lighthouse", "\u201CLighthouse\u201D is in the title, but there was no title or author to confirm it.")]
+    [InlineData("The Whale and the Lighthouse", "\u201CWhale\u201D and \u201CLighthouse\u201D are in the title, but there was no title or author to confirm it.")]
+    [InlineData("Moby-Dick", "Open Library's keyword search matched this book, but no title or author words confirm it.")]
+    public void Keyword_only_guesses_say_which_words_are_in_the_title(string title, string expected)
+    {
+        var hypothesis = new QueryHypothesis(null, null, ["whale", "lighthouse"], null);
+        var guess = new RankedCandidate(Books.Book(title, ["Someone"]), MatchTier.E,
+            new MatchEvidence(TitleMatch.None, AuthorRole.None, null, false, 0, KeywordOnly: true));
+
+        Assert.Equal(expected, TemplateExplanations.For(guess, hypothesis, 0));
+    }
+
     [Fact]
     public void Weak_match_says_what_did_not_match()
     {

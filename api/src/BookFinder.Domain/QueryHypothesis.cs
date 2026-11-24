@@ -17,5 +17,9 @@ public sealed record QueryHypothesis(
     public bool HasAuthor => !string.IsNullOrWhiteSpace(Author);
     public bool IsFreeText => !string.IsNullOrWhiteSpace(FreeText);
     public bool IsAuthorOnly => HasAuthor && !HasTitle && !IsFreeText;
-    public bool IsSearchable => HasTitle || HasAuthor || IsFreeText;
+
+    /// <summary>Describes a book ("whale", "lighthouse") without naming a title or author.</summary>
+    public bool IsKeywordOnly => !HasTitle && !HasAuthor && !IsFreeText && Keywords.Count > 0;
+
+    public bool IsSearchable => HasTitle || HasAuthor || IsFreeText || IsKeywordOnly;
 }

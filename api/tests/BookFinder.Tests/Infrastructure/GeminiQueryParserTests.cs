@@ -24,7 +24,7 @@ public class GeminiQueryParserTests
         var raw = new[]
         {
             new Hyp("  Dune  ", " Frank Herbert ", ["  sci-fi "], null),
-            new Hyp(" ", null, ["noise"], null),
+            new Hyp(" ", null, ["illustrated"], null), // only an edition word: nothing to search on
             new Hyp("Dune Messiah", null, null, null),
             new Hyp(null, "Brian Herbert", [], null),
             new Hyp("Children of Dune", null, [], null),
@@ -38,6 +38,20 @@ public class GeminiQueryParserTests
         Assert.Equal(["sci-fi"], result[0].Keywords);
         Assert.Equal("Dune Messiah", result[1].Title);
     }
+
+    [Fact]
+    public void A_vague_book_description_is_kept_as_keywords_only()
+    {
+        var result = GeminiQueryParser.Sanitize("blue cover book about a whale", [new Hyp(null, null, ["Whale", "book", "illustrated", "lighthouse"], null)]);
+
+        var h = Assert.Single(result);
+        Assert.True(h.IsKeywordOnly);
+        Assert.Equal(["whale", "lighthouse"], h.Keywords);
+    }
+
+    [Fact]
+    public void Only_edition_words_and_filler_is_not_a_book_query() =>
+        Assert.Empty(GeminiQueryParser.Sanitize("illustrated book", [new Hyp(null, null, ["illustrated", "book"], null)]));
 
     [Fact]
     public void Series_flag_survives() =>

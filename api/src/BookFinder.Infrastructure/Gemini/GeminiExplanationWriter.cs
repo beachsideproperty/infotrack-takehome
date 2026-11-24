@@ -31,6 +31,8 @@ public sealed class GeminiExplanationWriter(GeminiClient gemini, IOptions<Gemini
         - collectionOrBoxSet: say it's a collection or box set, so it ranks below single works.
         - derivativeVersion: someone else is listed first on this version (likely an adaptation); say the matched
           author is credited after them, like "Dixon listed first; Tolkien credited as original author".
+        - keywordOnly: the reader named no title or author; this is only a keyword guess. Say which of the reader's
+          words appear in the title, if any, and that nothing confirms it.
         - matchTier D: say the author is the primary author and give the work's place in Open Library reading logs
           (readingLogRank 1 = most-read).
 
@@ -89,6 +91,7 @@ public sealed class GeminiExplanationWriter(GeminiClient gemini, IOptions<Gemini
                 seriesMember = c.Evidence.SeriesMember,
                 collectionOrBoxSet = c.Evidence.Collection,
                 derivativeVersion = c.Evidence.Derivative,
+                keywordOnly = c.Evidence.KeywordOnly,
                 readingLogRank = c.Tier == MatchTier.D ? i + 1 : (int?)null,
             }),
         };

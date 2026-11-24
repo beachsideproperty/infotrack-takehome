@@ -66,6 +66,21 @@ public sealed class SearchService(
         var mode = SearchMode.Match;
         AuthorRef? author = null;
 
+        if (hypotheses.All(h => h.IsKeywordOnly))
+        {
+            // "blue cover book about a whale and a lighthouse": a book, but no title or author to go on.
+            // Show Open Library's closest keyword matches as guesses, never as a match.
+            var guesses = await KeywordGuessesAsync(hypotheses[0], cancellationToken);
+            if (guesses.Count == 0) return NoMatch(query, parsed);
+
+            var (guessResults, guessesFromLlm) = await ExplainAsync(query, guesses, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
+            return NoMatch(query, parsed) with { Results = guessResults, ExplanationsFromLlm = guessesFromLlm };
+        }
+
+        // Keyword-only readings add nothing once another reading names a title or author.
+        hypotheses = hypotheses.Where(h => !h.IsKeywordOnly).ToList();
+        parsed = parsed with { Hypotheses = hypotheses };
+
         if (hypotheses[0].IsAuthorOnly)
         {
             (ranked, author) = await AuthorWorksAsync(hypotheses[0].Author!, cancellationToken);
@@ -190,6 +205,28 @@ public sealed class SearchService(
         // Prefer the resolved author; without one, the matched author on the top work usually carries its key.
         var resolvedAuthor = author is not null ? new AuthorRef(author.Key, author.Name) : works.FirstOrDefault()?.Evidence.MatchedAuthor;
         return (works, resolvedAuthor);
+    }
+
+    /// <summary>
+    /// Keyword search for a query with no title or author. Kept in Open Library's relevance order (the best
+    /// signal we have), duplicates collapsed, top few resolved, all tier E and flagged as keyword-only.
+    /// </summary>
+    private async Task<IReadOnlyList<RankedCandidate>> KeywordGuessesAsync(QueryHypothesis hypothesis, CancellationToken cancellationToken)
+    {
+        var keywords = QueryWords.Meaningful(hypothesis.Keywords);
+        if (keywords.Count == 0) return [];
+
+        var docs = await catalog.SearchAsync(new CatalogQuery(Text: string.Join(' ', keywords), Limit: SearchLimit), cancellationToken);
+        var seen = new HashSet<(string, string)>();
+        var distinct = docs
+            .Where(d => seen.Add((TitleVariants.Base(d.Title), TextNormalizer.Normalize(d.AuthorNames.FirstOrDefault()))))
+            .Take(WorkRecordsToFetch);
+
+        var resolved = await Task.WhenAll(distinct.Select(d => ResolveAsync(d, cancellationToken)));
+        return resolved
+            .Select(book => new RankedCandidate(book, MatchTier.E, new MatchEvidence(
+                TitleMatch.None, AuthorRole.None, null, YearMatched: false, HypothesisIndex: 0, KeywordOnly: true)))
+            .ToList();
     }
 
     /// <summary>

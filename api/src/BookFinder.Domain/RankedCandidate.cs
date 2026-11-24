@@ -5,6 +5,7 @@ namespace BookFinder.Domain;
 /// <param name="Collection">Box set, omnibus or multi-title volume rather than a single work.</param>
 /// <param name="Derivative">Another work with this title lists the matched author first, so here they're credited
 /// on someone else's version (an adaptation or graphic novel) and count as a contributor.</param>
+/// <param name="KeywordOnly">Found by a keyword search because the query named no title or author.</param>
 public sealed record MatchEvidence(
     TitleMatch Title,
     AuthorRole AuthorRole,
@@ -13,6 +14,7 @@ public sealed record MatchEvidence(
     int HypothesisIndex,
     bool SeriesMember = false,
     bool Collection = false,
-    bool Derivative = false);
+    bool Derivative = false,
+    bool KeywordOnly = false);
 
 public sealed record RankedCandidate(BookCandidate Book, MatchTier Tier, MatchEvidence Evidence);

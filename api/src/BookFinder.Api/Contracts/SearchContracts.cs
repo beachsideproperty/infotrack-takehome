@@ -32,7 +32,20 @@ public sealed record BookResult(
     string Url,
     string? CoverUrl,
     string MatchTier,
+    MatchDetails Match,
     string Explanation);
+
+/// <summary>What matched, so the UI can label a result precisely ("Exact title · primary author", "Keyword only").</summary>
+/// <param name="Title">"exact" | "near" | "none".</param>
+/// <param name="Author">"primary" | "contributor" | "none".</param>
+public sealed record MatchDetails(
+    string Title,
+    string Author,
+    bool YearMatched,
+    bool SeriesMember,
+    bool Collection,
+    bool Derivative,
+    bool KeywordOnly);
 
 public static class SearchContractMapping
 {
@@ -64,6 +77,16 @@ public static class SearchContractMapping
             $"https://openlibrary.org/works/{book.OpenLibraryId}",
             book.CoverId is { } id ? $"https://covers.openlibrary.org/b/id/{id}-L.jpg" : null,
             result.Candidate.Tier.ToString(),
+            ToMatch(result.Candidate.Evidence),
             result.Explanation);
     }
+
+    private static MatchDetails ToMatch(MatchEvidence e) => new(
+        e.Title switch { TitleMatch.Exact => "exact", TitleMatch.Near => "near", _ => "none" },
+        e.AuthorRole switch { AuthorRole.Lead or AuthorRole.Primary => "primary", AuthorRole.Contributor => "contributor", _ => "none" },
+        e.YearMatched,
+        e.SeriesMember,
+        e.Collection,
+        e.Derivative,
+        e.KeywordOnly);
 }

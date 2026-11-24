@@ -154,6 +154,23 @@ public class GoldenQueryTests
         Assert.Empty(http.Requests);
     }
 
+    [Fact]
+    public async Task Whale_lighthouse_is_vague_so_closest_guesses_without_a_match()
+    {
+        var outcome = await Search("blue cover book about a whale and a lighthouse",
+            new QueryHypothesis(null, null, ["whale", "lighthouse"], null));
+
+        Assert.Equal(SearchMode.NoMatch, outcome.Mode);
+        Assert.False(outcome.HasBestMatch);
+        Assert.InRange(outcome.Results.Count, 1, 5);
+        Assert.All(outcome.Results, r =>
+        {
+            Assert.Equal(MatchTier.E, r.Candidate.Tier);
+            Assert.True(r.Candidate.Evidence.KeywordOnly);
+            Assert.False(string.IsNullOrWhiteSpace(r.Explanation));
+        });
+    }
+
     // ---- Same queries with Gemini down: the rule-based fallback still gets there.
 
     [Fact]

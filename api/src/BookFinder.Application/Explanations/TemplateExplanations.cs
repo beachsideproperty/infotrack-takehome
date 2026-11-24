@@ -1,3 +1,5 @@
+using BookFinder.Application.Parsing;
+using BookFinder.Application.Text;
 using BookFinder.Domain;
 
 namespace BookFinder.Application.Explanations;
@@ -15,6 +17,8 @@ public static class TemplateExplanations
         var lead = book.LeadAuthor?.Name ?? "an unlisted author";
         var matched = evidence.MatchedAuthor?.Name ?? lead;
 
+        if (evidence.KeywordOnly)
+            return KeywordOnly(book, hypothesis);
         if (evidence.Collection)
             return $"Collection or multi-book volume by {lead}; listed below single works{(evidence.Title != TitleMatch.None ? " though the title overlaps" : string.Empty)}.";
         if (evidence.SeriesMember)
@@ -51,6 +55,20 @@ public static class TemplateExplanations
         }
         return $"{matched} is {RolePhrase(evidence.AuthorRole)}, but \"{ranked.Book.Title}\" isn't the title you typed.";
     }
+
+    private static string KeywordOnly(BookCandidate book, QueryHypothesis? hypothesis)
+    {
+        var titleWords = TextNormalizer.Tokens(book.Title).ToHashSet(StringComparer.Ordinal);
+        var inTitle = QueryWords.Meaningful(hypothesis?.Keywords ?? []).Where(titleWords.Contains).ToList();
+        return inTitle.Count switch
+        {
+            0 => "Open Library's keyword search matched this book, but no title or author words confirm it.",
+            1 => $"\u201C{Capitalize(inTitle[0])}\u201D is in the title, but there was no title or author to confirm it.",
+            _ => $"{string.Join(" and ", inTitle.Select(w => $"\u201C{Capitalize(w)}\u201D"))} are in the title, but there was no title or author to confirm it.",
+        };
+    }
+
+    private static string Capitalize(string word) => word.Length == 0 ? word : char.ToUpperInvariant(word[0]) + word[1..];
 
     private static string RolePhrase(AuthorRole role) => role switch
     {

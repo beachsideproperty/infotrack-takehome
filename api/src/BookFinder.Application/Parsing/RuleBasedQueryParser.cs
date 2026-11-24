@@ -10,13 +10,7 @@ namespace BookFinder.Application.Parsing;
 /// </summary>
 public static partial class RuleBasedQueryParser
 {
-    /// <summary>Describe an edition, not a work, so they never help find the work.</summary>
-    private static readonly HashSet<string> EditionWords =
-    [
-        "illustrated", "deluxe", "edition", "hardcover", "hardback", "paperback", "ebook", "kindle", "audiobook",
-        "unabridged", "abridged", "annotated", "anniversary", "collectors", "collector", "special", "boxed", "box", "set",
-    ];
-
+    // Articles stay in: they can be part of a title ("the hobbit"), and Open Library's search handles them.
     private static readonly HashSet<string> Filler = ["book", "books", "novel", "by", "that", "about", "called", "titled", "written"];
 
     public static ParsedQuery Parse(string query)
@@ -29,7 +23,7 @@ public static partial class RuleBasedQueryParser
         foreach (var token in tokens)
         {
             if (year is null && YearPattern().IsMatch(token)) year = int.Parse(token);
-            else if (EditionWords.Contains(token)) keywords.Add(token);
+            else if (QueryWords.EditionWords.Contains(token)) keywords.Add(token);
             else if (!Filler.Contains(token)) kept.Add(token);
         }
 
