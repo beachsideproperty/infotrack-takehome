@@ -19,14 +19,17 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 builder.Services.AddConfiguredCors();
+builder.Services.AddSearchRateLimiting();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseCors();
+app.UseRateLimiter();
 
 app.MapHealthEndpoints();
 app.MapSearchEndpoints();

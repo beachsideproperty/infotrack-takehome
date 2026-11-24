@@ -1,3 +1,4 @@
+using BookFinder.Api.Configuration;
 using BookFinder.Api.Contracts;
 using BookFinder.Application.Search;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -14,8 +15,10 @@ public static class SearchEndpoints
         app.MapPost("/api/search", SearchAsync)
             .WithName("Search")
             .WithTags("Search")
+            .RequireRateLimiting(RateLimitSetup.SearchPolicy)
             .ProducesProblem(StatusCodes.Status502BadGateway)
-            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests);
         return app;
     }
 

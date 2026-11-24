@@ -64,19 +64,20 @@ public sealed class SearchService(
 
         IReadOnlyList<RankedCandidate> ranked;
         var mode = SearchMode.Match;
+        AuthorRef? author = null;
 
         if (hypotheses[0].IsAuthorOnly)
         {
-            ranked = await AuthorWorksAsync(hypotheses[0].Author!, cancellationToken);
+            (ranked, author) = await AuthorWorksAsync(hypotheses[0].Author!, cancellationToken);
             mode = SearchMode.AuthorOnly;
         }
         else
         {
             var docs = await SearchHypothesesAsync(hypotheses, cancellationToken);
-            if (hypotheses[0].IsFreeText && FreeTextAuthor(hypotheses[0], docs) is { } author)
+            if (hypotheses[0].IsFreeText && FreeTextAuthor(hypotheses[0], docs) is { } authorName)
             {
                 // Fallback parser on "dickens": every word is the top result's author's name.
-                ranked = await AuthorWorksAsync(author, cancellationToken);
+                (ranked, author) = await AuthorWorksAsync(authorName, cancellationToken);
                 mode = SearchMode.AuthorOnly;
             }
             else
@@ -90,7 +91,7 @@ public sealed class SearchService(
         var (results, fromLlm) = await ExplainAsync(query, ranked, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
         // A series ("harry potter") has no single answer: always a ranked list.
         var hasBestMatch = mode == SearchMode.Match && !hypotheses[0].IsSeries && Ranker.HasClearWinner(ranked);
-        return new SearchOutcome(query, parsed, mode, null, results, hasBestMatch, fromLlm);
+        return new SearchOutcome(query, parsed, mode, null, results, hasBestMatch, fromLlm, author);
     }
 
     /// <summary>Gemini's reading, cached separately so a degraded result can be redone without re-parsing.</summary>
@@ -165,8 +166,11 @@ public sealed class SearchService(
         return Ranker.Rank(TierClassifier.DemoteDerivatives(classified));
     }
 
-    /// <summary>Tier D: an author's most-read works where they're a primary author on the work record.</summary>
-    private async Task<IReadOnlyList<RankedCandidate>> AuthorWorksAsync(string authorName, CancellationToken cancellationToken)
+    /// <summary>
+    /// Tier D: an author's most-read works where they're a primary author on the work record, plus the author
+    /// itself (Open Library key and name) for the "all works by …" link.
+    /// </summary>
+    private async Task<(IReadOnlyList<RankedCandidate> Works, AuthorRef? Author)> AuthorWorksAsync(string authorName, CancellationToken cancellationToken)
     {
         var hits = await catalog.FindAuthorsAsync(authorName, cancellationToken);
         var author = hits.Where(a => AuthorMatcher.Matches(authorName, a.Name)).MaxBy(a => a.WorkCount);
@@ -181,7 +185,11 @@ public sealed class SearchService(
         var distinct = docs.Where(d => seenTitles.Add(TitleVariants.Base(d.Title))).Take(WorkRecordsToFetch);
         var resolved = await Task.WhenAll(distinct.Select(d => ResolveAsync(d, cancellationToken)));
         var name = author?.Name ?? authorName;
-        return Ranker.Rank(resolved.Select(c => TierClassifier.ClassifyAuthorWork(c, name)).OfType<RankedCandidate>());
+        var works = Ranker.Rank(resolved.Select(c => TierClassifier.ClassifyAuthorWork(c, name)).OfType<RankedCandidate>());
+
+        // Prefer the resolved author; without one, the matched author on the top work usually carries its key.
+        var resolvedAuthor = author is not null ? new AuthorRef(author.Key, author.Name) : works.FirstOrDefault()?.Evidence.MatchedAuthor;
+        return (works, resolvedAuthor);
     }
 
     /// <summary>

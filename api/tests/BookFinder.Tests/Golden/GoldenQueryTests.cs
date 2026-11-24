@@ -44,6 +44,7 @@ public class GoldenQueryTests
         Assert.All(outcome.Results, r => Assert.Equal(MatchTier.D, r.Candidate.Tier));
         Assert.Equal(5, outcome.Results.Count);
         Assert.Equal(outcome.Results.Count, outcome.Results.Select(r => r.Candidate.Book.Title).Distinct().Count());
+        Assert.Equal(new AuthorRef("OL24638A", "Charles Dickens"), outcome.Author);
     }
 
     [Fact]
@@ -171,6 +172,7 @@ public class GoldenQueryTests
 
         Assert.Equal(SearchMode.AuthorOnly, outcome.Mode);
         AssertTop(outcome, "A Tale of Two Cities", "Charles Dickens", MatchTier.D);
+        Assert.Equal("OL24638A", outcome.Author?.Key);
     }
 
     [Fact]

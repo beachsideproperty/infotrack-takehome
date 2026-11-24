@@ -9,10 +9,14 @@ public sealed record SearchResponse(
     IReadOnlyList<InterpretedAs> InterpretedAs,
     string Mode,
     DidYouMean? DidYouMean,
+    AuthorLink? Author,
     IReadOnlyList<BookResult> Results,
     bool HasBestMatch,
     string Parser,
     string Explanations);
+
+/// <summary>Author-only searches: who the works are by, with a link to all their works on Open Library.</summary>
+public sealed record AuthorLink(string Name, string OpenLibraryId, string Url);
 
 /// <summary>One reading of the query. <see cref="Text"/> is set only for the rule-based fallback.</summary>
 public sealed record InterpretedAs(string? Title, string? Author, IReadOnlyList<string> Keywords, int? Year, bool IsSeries, string? Text);
@@ -42,6 +46,7 @@ public static class SearchContractMapping
             _ => "match",
         },
         outcome.DidYouMean is { } d ? new DidYouMean(d.Title, d.Author) : null,
+        outcome.Author is { Key: { Length: > 0 } key } a ? new AuthorLink(a.Name, key, $"https://openlibrary.org/authors/{key}") : null,
         outcome.Results.Select(ToResult).ToList(),
         outcome.HasBestMatch,
         outcome.Parsed.Parser == ParserKind.Llm ? "llm" : "fallback",

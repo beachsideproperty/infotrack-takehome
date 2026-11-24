@@ -124,6 +124,40 @@ public class SearchEndpointTests(WebApplicationFactory<Program> factory) : IClas
     }
 
     [Fact]
+    public async Task Author_only_includes_a_link_to_all_their_works()
+    {
+        var client = Client(parser: FakeLlmParser.Returning(H.Hyp(null, "Charles Dickens")));
+
+        var body = await (await Post(client, "dickens")).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal("authorOnly", body.GetProperty("mode").GetString());
+        var author = body.GetProperty("author");
+        Assert.Equal("Charles Dickens", author.GetProperty("name").GetString());
+        Assert.Equal("OL24638A", author.GetProperty("openLibraryId").GetString());
+        Assert.Equal("https://openlibrary.org/authors/OL24638A", author.GetProperty("url").GetString());
+    }
+
+    [Fact]
+    public async Task Too_many_searches_from_one_client_is_429_with_retry_after()
+    {
+        var client = factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("SEARCH_RATE_LIMIT_PER_MINUTE", "2");
+            b.ConfigureTestServices(s => s.AddScoped<ILlmQueryParser>(_ => FakeLlmParser.Returning()));
+        }).CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await Post(client, "pizza recipe")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Post(client, "pizza recipe")).StatusCode);
+        var third = await Post(client, "pizza recipe");
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+        Assert.True(int.Parse(third.Headers.GetValues("Retry-After").Single()) > 0);
+        var problem = await third.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Lots of searches at once", problem.GetProperty("title").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode); // health is never limited
+    }
+
+    [Fact]
     public async Task Malformed_json_is_400()
     {
         var response = await Client().PostAsync("/api/search", new StringContent("{not json", System.Text.Encoding.UTF8, "application/json"));

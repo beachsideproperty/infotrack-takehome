@@ -73,7 +73,7 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 146 tests, offline, ~1 s
+cd api && dotnet test        # 148 tests, offline, ~1 s
 cd web && npm run build      # type-check + production build
 ```
 
@@ -92,6 +92,7 @@ cd api && RECORD_FIXTURES=1 dotnet test --filter Category=Golden
 | `GEMINI_FALLBACK_MODEL` | API | Optional. Explanations try it first; each falls back to the other. Default `gemini-3.1-flash-lite` |
 | `GEMINI_RPM_PER_MODEL` | API | Optional. Our own requests-per-minute cap per model, under Google's free-tier limit. Default 14 |
 | `OPENLIBRARY_CONTACT_EMAIL` | API | Contact in the Open Library User-Agent (3 req/s instead of 1) |
+| `SEARCH_RATE_LIMIT_PER_MINUTE` | API | Optional. Searches per client IP per minute before a 429. Default 10 |
 | `ALLOWED_ORIGINS` | API | Comma-separated origins allowed by CORS, no trailing slash |
 | `PORT` | API | Port to bind on `0.0.0.0`. Render sets it (default 10000) |
 | `VITE_API_URL` | Web | API base URL. Baked in at build time, so never put secrets here |
@@ -116,7 +117,7 @@ docker-compose.yml
 | Method | Path | Response |
 |---|---|---|
 | GET | `/health` | `200 { "status": "ok", "version": "0.1.0", "commit": "abc1234" }` (`commit` only on Render) |
-| POST | `/api/search` | `200` search outcome (below); `400` bad input; `502` Open Library down; `503` Open Library rate-limiting |
+| POST | `/api/search` | `200` search outcome (below); `400` bad input; `429` too many searches from this client; `502` Open Library down; `503` Open Library rate-limiting |
 
 ```jsonc
 // POST /api/search  { "query": "tolkien hobbit illustrated deluxe 1937" }
@@ -149,7 +150,8 @@ docker-compose.yml
 }
 ```
 
-- Fields with no value are left out (a missing `firstPublishYear` is never `0`). `didYouMean: { title, author }` appears only on `noMatch`.
+- Fields with no value are left out (a missing `firstPublishYear` is never `0`). `didYouMean: { title, author }` appears only on `noMatch`; `author: { name, openLibraryId, url }` only on `authorOnly`, for the "all works by …" link.
+- `firstPublishYear` is exactly what Open Library reports, which is sometimes wrong (see design decisions).
 - The brief's sample uses `author` (string) and `first_publish_year`; this API returns `authors[]` (a work can have several) and camelCase, the .NET and TypeScript convention.
 - Errors are RFC 7807 ProblemDetails. Validation errors carry the message to show under the input in `detail` and `errors.query`:
   - empty: "Type a title, an author or a few words you remember."
@@ -211,6 +213,8 @@ Within a tier: the year named in the query → the matched author's place on the
   - *Cool down instead of waiting.* After a 429 the model is skipped for Google's `retryDelay` (until midnight Pacific for a daily quota); after a 503, for 20 s; after a timeout, for 10 s. Skipping costs no time, so a degraded search takes about 3 s instead of 20.
   - *Time budgets from measured latency.* Successful answers took 0.6–5.2 s. Parsing gets 9 s in total, of which the first model gets 5.5 s; explanations get 6 s, of which the first model gets 4 s. If parsing had to fall back, the explanation call is skipped.
   - *Readable failures.* Every attempt logs the operation, model, latency and Google's status, message, quota id and retry delay (never the key or the prompt).
+- **Publication years are Open Library's.** `first_publish_year` is noisy (*A Tale of Two Cities* shows 1800; it was 1859), and the work records are worse. We report Open Library's value as is and label it as theirs in the UI, rather than "correcting" it with the LLM, which would break the rule that every fact comes from Open Library.
+- **Per-client rate limit.** Each client IP gets 10 searches a minute (configurable); beyond that the API returns a 429 ProblemDetails, "Lots of searches at once", with `Retry-After`. It keeps one visitor from spending the shared Gemini and Open Library quotas. The client IP comes from `X-Forwarded-For`, since Render sits behind a proxy.
 - **No database.** Open Library responses are cached in memory per instance (6 hours).
 
 ## Features
@@ -224,7 +228,7 @@ Within a tier: the year named in the query → the matched author's place on the
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 146 tests offline in about a second. No test calls Gemini or the network.
+`cd api && dotnet test` runs 148 tests offline in about a second. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
@@ -232,7 +236,7 @@ Within a tier: the year named in the query → the matched author's place on the
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
 | Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
-| API | `WebApplicationFactory` with fakes: response contract, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
+| API | `WebApplicationFactory` with fakes: response contract, author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
 
 ## Future improvements
 
