@@ -12,6 +12,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddMemoryCache();
+        services.AddSingleton(TimeProvider.System);
 
         services.Configure<OpenLibraryOptions>(o => o.ContactEmail = configuration["OPENLIBRARY_CONTACT_EMAIL"]);
         services.AddSingleton<OpenLibraryRateLimiter>();
@@ -32,7 +33,9 @@ public static class DependencyInjection
             if (configuration["GEMINI_MODEL"] is { Length: > 0 } model) o.Model = model;
             // Empty means "use the default", so copying .env.example as-is never disables the fallback model.
             if (configuration["GEMINI_FALLBACK_MODEL"] is { Length: > 0 } fallback) o.FallbackModel = fallback;
+            if (int.TryParse(configuration["GEMINI_RPM_PER_MODEL"], out var rpm) && rpm > 0) o.RequestsPerMinutePerModel = rpm;
         });
+        services.AddSingleton<GeminiModelGate>();
         services.AddHttpClient<GeminiClient>((sp, http) =>
         {
             http.BaseAddress = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.BaseAddress;

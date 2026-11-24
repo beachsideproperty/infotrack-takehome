@@ -4,6 +4,7 @@ using BookFinder.Application.Ports;
 using BookFinder.Infrastructure.Gemini;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 namespace BookFinder.Tests.Infrastructure;
 
@@ -11,15 +12,24 @@ public class GeminiClientTests
 {
     private static readonly JsonObject Schema = new() { ["type"] = "object" };
 
+    private static readonly GeminiOptions.CallProfile Parse = new("parse", TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(3), PreferFallbackModel: false);
+
+    private static readonly GeminiOptions.CallProfile Explain = Parse with { Operation = "explain", PreferFallbackModel = true };
+
     private sealed record Answer(string Value);
 
-    private static GeminiClient Client(StubHandler handler, string? apiKey = "test-key", TimeSpan? primaryTimeout = null)
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 24, 20, 0, 0, TimeSpan.Zero));
+
+    private (GeminiClient Client, GeminiModelGate Gate) Create(StubHandler handler, string? apiKey = "test-key", int rpm = 14)
     {
-        var options = new GeminiOptions { ApiKey = apiKey, Model = "primary", FallbackModel = "backup" };
-        if (primaryTimeout is { } t) options.PrimaryAttemptTimeout = t;
-        var http = new HttpClient(handler) { BaseAddress = options.BaseAddress };
-        return new GeminiClient(http, Options.Create(options), NullLogger<GeminiClient>.Instance);
+        var options = Options.Create(new GeminiOptions { ApiKey = apiKey, Model = "primary", FallbackModel = "backup", RequestsPerMinutePerModel = rpm });
+        var gate = new GeminiModelGate(options, _time);
+        var http = new HttpClient(handler) { BaseAddress = options.Value.BaseAddress };
+        return (new GeminiClient(http, options, gate, _time, NullLogger<GeminiClient>.Instance), gate);
     }
+
+    private static Task<Answer> Generate(GeminiClient client, GeminiOptions.CallProfile? profile = null) =>
+        client.GenerateJsonAsync<Answer>(profile ?? Parse, "sys", "user", Schema, default);
 
     private static HttpResponseMessage Candidate(string jsonText) => StubHandler.Json(new JsonObject
     {
@@ -30,12 +40,21 @@ public class GeminiClientTests
         }),
     }.ToJsonString());
 
+    private static HttpResponseMessage RateLimited(string quotaId, string retryDelay) => StubHandler.Json($$$"""
+        {"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"You exceeded your current quota.",
+          "details":[
+            {"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaMetric":"generativelanguage.googleapis.com/generate_content_free_tier_requests","quotaId":"{{{quotaId}}}"}]},
+            {"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"{{{retryDelay}}}"}]}}
+        """, HttpStatusCode.TooManyRequests);
+
+    private static bool Calls(HttpRequestMessage r, string model) => r.RequestUri!.AbsolutePath.Contains($"/{model}:");
+
     [Fact]
     public async Task Returns_parsed_json_and_sends_key_in_header_not_url()
     {
         var handler = new StubHandler((_, _) => Task.FromResult(Candidate("""{"value":"ok"}""")));
 
-        var answer = await Client(handler).GenerateJsonAsync<Answer>("sys", "user", Schema, TimeSpan.FromSeconds(5), default);
+        var answer = await Generate(Create(handler).Client);
 
         Assert.Equal("ok", answer.Value);
         var request = Assert.Single(handler.Seen);
@@ -44,47 +63,125 @@ public class GeminiClientTests
         Assert.DoesNotContain("test-key", request.RequestUri.ToString());
     }
 
+    [Fact]
+    public async Task Explanations_start_on_the_other_model_to_spread_quota()
+    {
+        var handler = new StubHandler((_, _) => Task.FromResult(Candidate("""{"value":"ok"}""")));
+
+        await Generate(Create(handler).Client, Explain);
+
+        Assert.True(Calls(Assert.Single(handler.Seen), "backup"));
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
     [InlineData(HttpStatusCode.TooManyRequests)]
     [InlineData(HttpStatusCode.NotFound)]
     public async Task Falls_back_to_the_second_model_when_the_first_fails(HttpStatusCode status)
     {
-        var handler = new StubHandler((req, _) => Task.FromResult(req.RequestUri!.AbsolutePath.Contains("primary")
+        var handler = new StubHandler((req, _) => Task.FromResult(Calls(req, "primary")
             ? StubHandler.Json("""{"error":{}}""", status)
             : Candidate("""{"value":"from backup"}""")));
 
-        var answer = await Client(handler).GenerateJsonAsync<Answer>("sys", "user", Schema, TimeSpan.FromSeconds(5), default);
+        var answer = await Generate(Create(handler).Client);
 
         Assert.Equal("from backup", answer.Value);
         Assert.Equal(2, handler.Calls);
     }
 
     [Fact]
-    public async Task A_hanging_primary_model_leaves_time_for_the_backup()
+    public async Task A_hanging_first_model_leaves_time_for_the_second()
     {
         var handler = new StubHandler(async (req, _) =>
         {
-            if (req.RequestUri!.AbsolutePath.Contains("primary")) await Task.Delay(TimeSpan.FromSeconds(30));
+            if (Calls(req, "primary")) await Task.Delay(TimeSpan.FromSeconds(30));
             return Candidate("""{"value":"from backup"}""");
         });
 
-        var answer = await Client(handler, primaryTimeout: TimeSpan.FromMilliseconds(100))
-            .GenerateJsonAsync<Answer>("sys", "user", Schema, TimeSpan.FromSeconds(5), default);
+        var answer = await Create(handler).Client.GenerateJsonAsync<Answer>(
+            Parse with { FirstModelTimeout = TimeSpan.FromMilliseconds(100) }, "sys", "user", Schema, default);
 
         Assert.Equal("from backup", answer.Value);
     }
 
     [Fact]
-    public async Task Both_models_failing_is_LlmUnavailable()
+    public async Task An_overloaded_model_is_skipped_without_a_call_until_its_cooldown_ends()
     {
-        var handler = new StubHandler((_, _) => Task.FromResult(StubHandler.Json("{}", HttpStatusCode.ServiceUnavailable)));
+        var handler = new StubHandler((req, _) => Task.FromResult(Calls(req, "primary")
+            ? StubHandler.Json("""{"error":{"code":503,"status":"UNAVAILABLE","message":"high demand"}}""", HttpStatusCode.ServiceUnavailable)
+            : Candidate("""{"value":"ok"}""")));
+        var (client, _) = Create(handler);
 
-        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() =>
-            Client(handler).GenerateJsonAsync<Answer>("sys", "user", Schema, TimeSpan.FromSeconds(5), default));
+        await Generate(client);                                  // primary 503 → backup
+        await Generate(client);                                  // primary skipped → backup only
+        Assert.Equal(1, handler.Seen.Count(r => Calls(r, "primary")));
 
-        Assert.Contains("primary: overloaded", ex.Message);
-        Assert.Contains("backup: overloaded", ex.Message);
+        _time.Advance(TimeSpan.FromSeconds(21));                 // overload cooldown is 20 s
+        await Generate(client);
+        Assert.Equal(2, handler.Seen.Count(r => Calls(r, "primary")));
+    }
+
+    [Fact]
+    public async Task A_rate_limited_model_waits_for_googles_retry_delay()
+    {
+        var handler = new StubHandler((req, _) => Task.FromResult(Calls(req, "primary")
+            ? RateLimited("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "37s")
+            : Candidate("""{"value":"ok"}""")));
+        var (client, gate) = Create(handler);
+
+        await Generate(client);
+
+        _time.Advance(TimeSpan.FromSeconds(30));
+        Assert.False(gate.TryAcquire("primary", out var reason));
+        Assert.Contains("rate limit", reason);
+        _time.Advance(TimeSpan.FromSeconds(8));
+        Assert.True(gate.TryAcquire("primary", out _));
+    }
+
+    [Fact]
+    public async Task A_daily_quota_benches_the_model_until_midnight_pacific()
+    {
+        var handler = new StubHandler((req, _) => Task.FromResult(Calls(req, "primary")
+            ? RateLimited("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20s")
+            : Candidate("""{"value":"ok"}""")));
+        var (client, gate) = Create(handler);
+
+        await Generate(client); // 20:00 UTC = 12:00 Pacific
+
+        _time.Advance(TimeSpan.FromHours(11));
+        Assert.False(gate.TryAcquire("primary", out _));        // 23:00 Pacific
+        _time.Advance(TimeSpan.FromHours(1.1));
+        Assert.True(gate.TryAcquire("primary", out _));         // past midnight Pacific
+    }
+
+    [Fact]
+    public async Task Our_own_per_minute_cap_routes_to_the_other_model_before_google_says_no()
+    {
+        var handler = new StubHandler((_, _) => Task.FromResult(Candidate("""{"value":"ok"}""")));
+        var (client, _) = Create(handler, rpm: 2);
+
+        for (var i = 0; i < 4; i++) await Generate(client);
+
+        Assert.Equal(2, handler.Seen.Count(r => Calls(r, "primary")));
+        Assert.Equal(2, handler.Seen.Count(r => Calls(r, "backup")));
+        await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(client)); // both at cap: no call at all
+        Assert.Equal(4, handler.Calls);
+
+        _time.Advance(TimeSpan.FromMinutes(1));
+        await Generate(client);
+        Assert.Equal(5, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Both_models_failing_is_LlmUnavailable_with_googles_reasons()
+    {
+        var handler = new StubHandler((_, _) => Task.FromResult(
+            StubHandler.Json("""{"error":{"code":503,"status":"UNAVAILABLE","message":"high demand"}}""", HttpStatusCode.ServiceUnavailable)));
+
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+
+        Assert.Contains("primary: HTTP 503, UNAVAILABLE", ex.Message);
+        Assert.Contains("backup: HTTP 503, UNAVAILABLE", ex.Message);
     }
 
     [Fact]
@@ -92,8 +189,7 @@ public class GeminiClientTests
     {
         var handler = new StubHandler((_, _) => Task.FromResult(Candidate("not json")));
 
-        await Assert.ThrowsAsync<LlmUnavailableException>(() =>
-            Client(handler).GenerateJsonAsync<Answer>("sys", "user", Schema, TimeSpan.FromSeconds(5), default));
+        await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
     }
 
     [Fact]
@@ -101,8 +197,38 @@ public class GeminiClientTests
     {
         var handler = new StubHandler((_, _) => Task.FromResult(Candidate("{}")));
 
-        await Assert.ThrowsAsync<LlmUnavailableException>(() =>
-            Client(handler, apiKey: null).GenerateJsonAsync<Answer>("sys", "user", Schema, TimeSpan.FromSeconds(5), default));
+        await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler, apiKey: null).Client));
         Assert.Equal(0, handler.Calls);
+    }
+
+    [Fact]
+    public void Parses_quota_and_retry_delay_from_googles_error_body()
+    {
+        var error = GeminiError.Parse(429, """
+            {"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":"Quota exceeded",
+              "details":[{"@type":"type.googleapis.com/google.rpc.QuotaFailure","violations":[{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]},
+                         {"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"12.5s"}]}}
+            """);
+
+        Assert.Equal("RESOURCE_EXHAUSTED", error.Status);
+        Assert.True(error.IsDailyQuota);
+        Assert.Equal(TimeSpan.FromSeconds(12.5), error.RetryDelay);
+        Assert.Equal("HTTP 429, RESOURCE_EXHAUSTED, quota GenerateRequestsPerDayPerProjectPerModel-FreeTier, retry after 12.5s, \"Quota exceeded\"", error.ToString());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("<html>gateway error</html>")]
+    public void Unparseable_error_bodies_still_give_the_status(string? body) =>
+        Assert.Equal("HTTP 502", GeminiError.Parse(502, body).ToString());
+
+    [Fact]
+    public void Next_pacific_midnight_handles_daylight_saving()
+    {
+        // Nov 24, 2026 is PST (UTC-8): midnight Pacific = 08:00 UTC next day.
+        Assert.Equal(new DateTimeOffset(2026, 11, 25, 8, 0, 0, TimeSpan.Zero), GeminiClient.NextPacificMidnight(new DateTimeOffset(2026, 11, 24, 20, 0, 0, TimeSpan.Zero)));
+        // Jul 1 is PDT (UTC-7): midnight Pacific = 07:00 UTC.
+        Assert.Equal(new DateTimeOffset(2026, 7, 2, 7, 0, 0, TimeSpan.Zero), GeminiClient.NextPacificMidnight(new DateTimeOffset(2026, 7, 1, 20, 0, 0, TimeSpan.Zero)));
     }
 }

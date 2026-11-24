@@ -1,5 +1,6 @@
 using BookFinder.Application.Search;
 using BookFinder.Domain;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace BookFinder.Tests.Golden;
@@ -16,7 +17,7 @@ public class GoldenQueryTests
     private static (SearchService Service, FixtureHandler Http) Create(FakeLlmParser parser)
     {
         var http = new FixtureHandler();
-        var service = new SearchService(parser, Catalogs.OpenLibrary(http), new UnavailableExplainer(), NullLogger<SearchService>.Instance);
+        var service = new SearchService(parser, Catalogs.OpenLibrary(http), new UnavailableExplainer(), new MemoryCache(new MemoryCacheOptions()), NullLogger<SearchService>.Instance);
         return (service, http);
     }
 

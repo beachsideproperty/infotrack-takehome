@@ -4,6 +4,7 @@ using BookFinder.Application.Parsing;
 using BookFinder.Application.Ports;
 using BookFinder.Application.Text;
 using BookFinder.Domain;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace BookFinder.Application.Search;
@@ -12,13 +13,22 @@ namespace BookFinder.Application.Search;
 /// query → hypotheses (Gemini, or rules) → Open Library search per hypothesis → dedupe → work records for
 /// the top candidates → tier + rank → explanations (Gemini, or templates).
 /// The LLM reads and explains; this class and <see cref="Ranker"/> decide.
+/// Results are cached by normalized query so repeat searches never spend Gemini quota.
 /// </summary>
 public sealed class SearchService(
     ILlmQueryParser llmParser,
     IBookCatalog catalog,
     IExplanationWriter explanationWriter,
+    IMemoryCache cache,
     ILogger<SearchService> logger)
 {
+    /// <summary>How long a result made entirely with Gemini is reused.</summary>
+    public static readonly TimeSpan FullResultTtl = TimeSpan.FromHours(6);
+
+    /// <summary>A result that needed the rule-based parser or templates is reused only briefly, so a better one
+    /// replaces it once Gemini is answering again.</summary>
+    public static readonly TimeSpan DegradedResultTtl = TimeSpan.FromMinutes(2);
+
     public const int MaxQueryLength = 300;
     public const int MaxHypotheses = 3;
 
@@ -29,6 +39,21 @@ public sealed class SearchService(
     private const int MaxExplanationLength = 300;
 
     public async Task<SearchOutcome> SearchAsync(string query, CancellationToken cancellationToken)
+    {
+        var key = "search:" + TextNormalizer.Normalize(query);
+        if (cache.TryGetValue(key, out SearchOutcome? cached) && cached is not null)
+        {
+            logger.LogInformation("Search cache hit for {Query}", query);
+            return cached with { Query = query };
+        }
+
+        var outcome = await SearchUncachedAsync(query, cancellationToken);
+        var degraded = outcome.Parsed.Parser == ParserKind.Fallback || (outcome.Results.Count > 0 && !outcome.ExplanationsFromLlm);
+        cache.Set(key, outcome, degraded ? DegradedResultTtl : FullResultTtl);
+        return outcome;
+    }
+
+    private async Task<SearchOutcome> SearchUncachedAsync(string query, CancellationToken cancellationToken)
     {
         var parsed = await ParseAsync(query, cancellationToken);
         var hypotheses = parsed.Hypotheses.Where(h => h.IsSearchable).Take(MaxHypotheses).ToList();
@@ -62,18 +87,24 @@ public sealed class SearchService(
 
         if (ranked.Count == 0) return NoMatch(query, parsed);
 
-        var (results, fromLlm) = await ExplainAsync(query, ranked, hypotheses, cancellationToken);
+        var (results, fromLlm) = await ExplainAsync(query, ranked, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
         // A series ("harry potter") has no single answer: always a ranked list.
         var hasBestMatch = mode == SearchMode.Match && !hypotheses[0].IsSeries && Ranker.HasClearWinner(ranked);
         return new SearchOutcome(query, parsed, mode, null, results, hasBestMatch, fromLlm);
     }
 
+    /// <summary>Gemini's reading, cached separately so a degraded result can be redone without re-parsing.</summary>
     private async Task<ParsedQuery> ParseAsync(string query, CancellationToken cancellationToken)
     {
+        var key = "parse:" + TextNormalizer.Normalize(query);
+        if (cache.TryGetValue(key, out ParsedQuery? cached) && cached is not null) return cached;
+
         try
         {
             var hypotheses = await llmParser.ParseAsync(query, cancellationToken);
-            return new ParsedQuery(hypotheses, ParserKind.Llm);
+            var parsed = new ParsedQuery(hypotheses, ParserKind.Llm);
+            cache.Set(key, parsed, FullResultTtl);
+            return parsed;
         }
         catch (LlmUnavailableException ex)
         {
@@ -213,19 +244,24 @@ public sealed class SearchService(
             doc.FirstPublishYear, doc.CoverId ?? work.CoverId, doc.EditionCount, doc.ReadingLogCount);
     }
 
-    /// <summary>One batched Gemini call; any missing, empty or overlong sentence falls back to its template.</summary>
+    /// <summary>
+    /// One batched Gemini call; any missing, empty or overlong sentence falls back to its template.
+    /// Skipped when parsing just fell back: Gemini is struggling, so don't spend more time or quota on it.
+    /// </summary>
     private async Task<(IReadOnlyList<SearchResult> Results, bool FromLlm)> ExplainAsync(
-        string query, IReadOnlyList<RankedCandidate> ranked, IReadOnlyList<QueryHypothesis> hypotheses, CancellationToken cancellationToken)
+        string query, IReadOnlyList<RankedCandidate> ranked, IReadOnlyList<QueryHypothesis> hypotheses, bool tryLlm, CancellationToken cancellationToken)
     {
-        IReadOnlyDictionary<string, string> written;
-        try
+        IReadOnlyDictionary<string, string> written = new Dictionary<string, string>();
+        if (tryLlm)
         {
-            written = await explanationWriter.WriteAsync(query, ranked, cancellationToken);
-        }
-        catch (LlmUnavailableException ex)
-        {
-            logger.LogWarning("LLM explanations unavailable, using templates: {Reason}", ex.Message);
-            written = new Dictionary<string, string>();
+            try
+            {
+                written = await explanationWriter.WriteAsync(query, ranked, cancellationToken);
+            }
+            catch (LlmUnavailableException ex)
+            {
+                logger.LogWarning("LLM explanations unavailable, using templates: {Reason}", ex.Message);
+            }
         }
 
         var allFromLlm = true;

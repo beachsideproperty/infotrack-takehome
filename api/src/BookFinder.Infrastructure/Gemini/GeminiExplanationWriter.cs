@@ -94,7 +94,7 @@ public sealed class GeminiExplanationWriter(GeminiClient gemini, IOptions<Gemini
         };
 
         var response = await gemini.GenerateJsonAsync<Response>(
-            SystemPrompt, JsonSerializer.Serialize(input, Json), Schema, options.Value.ExplainBudget, cancellationToken);
+            options.Value.Explain, SystemPrompt, JsonSerializer.Serialize(input, Json), Schema, cancellationToken);
 
         var byId = candidates.ToDictionary(c => c.Book.OpenLibraryId, c => c.Book.WorkKey, StringComparer.Ordinal);
         var result = new Dictionary<string, string>(StringComparer.Ordinal);

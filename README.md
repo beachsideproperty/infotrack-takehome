@@ -73,7 +73,7 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 133 tests, offline, ~1 s
+cd api && dotnet test        # 146 tests, offline, ~1 s
 cd web && npm run build      # type-check + production build
 ```
 
@@ -88,8 +88,9 @@ cd api && RECORD_FIXTURES=1 dotnet test --filter Category=Golden
 | Variable | Where | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | API | Gemini key. Locally: `dotnet user-secrets` or `.env` for Docker |
-| `GEMINI_MODEL` | API | Optional. Default `gemini-3.5-flash-lite` |
-| `GEMINI_FALLBACK_MODEL` | API | Optional. Tried when the first model fails. Default `gemini-3.1-flash-lite` |
+| `GEMINI_MODEL` | API | Optional. Parsing tries it first. Default `gemini-3.5-flash-lite` |
+| `GEMINI_FALLBACK_MODEL` | API | Optional. Explanations try it first; each falls back to the other. Default `gemini-3.1-flash-lite` |
+| `GEMINI_RPM_PER_MODEL` | API | Optional. Our own requests-per-minute cap per model, under Google's free-tier limit. Default 14 |
 | `OPENLIBRARY_CONTACT_EMAIL` | API | Contact in the Open Library User-Agent (3 req/s instead of 1) |
 | `ALLOWED_ORIGINS` | API | Comma-separated origins allowed by CORS, no trailing slash |
 | `PORT` | API | Port to bind on `0.0.0.0`. Render sets it (default 10000) |
@@ -188,7 +189,9 @@ Within a tier: the year named in the query → the matched author's place on the
 
 **Normalizing:** Unicode NFKD, accents and punctuation stripped, lowercase, leading article dropped. Title variants split on `:`, `;`, `, or`, ` (`, ` - `, so "The Hobbit, or There and Back Again" matches "the hobbit". Author names match on surname plus compatible given names or initials ("J.R.R. Tolkien" = "John Ronald Reuel Tolkien"; "Charles Dickens" ≠ "Monica Dickens").
 
-**Open Library budget:** one `search.json` per hypothesis (max 3), `works/{id}.json` for the top 5 only, `authors/{id}.json` only when a name is missing. A process-wide token bucket keeps us at 3 requests/second with an identified User-Agent (1/s without), responses are cached by URL, each call times out at 6 s and is retried once. A new query costs about 6–8 Open Library calls and two Gemini calls, typically 3–6 s; repeats are faster thanks to the cache.
+**Open Library budget:** one `search.json` per hypothesis (max 3), `works/{id}.json` for the top 5 only, `authors/{id}.json` only when a name is missing. A process-wide token bucket keeps us at 3 requests/second with an identified User-Agent (1/s without), responses are cached by URL, each call times out at 6 s and is retried once. A new query costs about 6–8 Open Library calls and two Gemini calls, typically 3–6 s.
+
+**Caching:** results are cached by normalized query ("Tolkien Hobbit!" = "tolkien hobbit") for 6 hours, so a repeated search, like the example chips, never spends Gemini quota. A result that needed the rule-based parser or template explanations is kept for only 2 minutes, and Gemini's reading of the query is cached separately, so a better result replaces it once Gemini recovers. Everything is in memory, so a Render restart (the free tier sleeps when idle) starts cold.
 
 ## Assumptions and design decisions
 
@@ -201,7 +204,13 @@ Within a tier: the year named in the query → the matched author's place on the
 - **Years.** A year breaks ties and is cited in the explanation. Code keeps a year only if it appears in the query and isn't part of the title ("1984 by orwell"), so the model can't invent one. Edition words ("illustrated", "deluxe") are ignored, since results are works, not editions.
 - **Never an LLM-only guess.** Every result comes from Open Library. Gemini only proposes what to search for and phrases the explanation; its output is schema-constrained, trimmed and capped, and the explanation prompt only sees fields we fetched plus how code classified the match. The year is sent to it only when it matched.
 - **Prompt injection.** The query is passed as a JSON string labelled as data, the system prompt says to ignore instructions inside it, and the response must match a JSON schema. The worst a malicious query can do is produce odd hypotheses, which then have to match real Open Library records.
-- **Gemini model choice.** Measured on Nov 24, 2026 on the free tier: `gemini-3.8-flash` timed out, returned 503 or was rate-limited on every call, while `gemini-3.5-flash-lite` answered in about 1 s and read every golden query correctly. So Flash-Lite is the default, with a second model as fallback (each model has its own quota). The first model gets at most 4 s so the fallback has time; parsing has an 8 s budget and explanations 6 s before the rule-based parser or templates take over. Both models are configurable.
+- **Gemini model choice.** Measured on Nov 24, 2026 on the free tier: `gemini-3.8-flash` timed out, returned 503 or was rate-limited on nearly every call (and allows only 5 requests/minute), while `gemini-3.5-flash-lite` answered in about 1 s and read every golden query correctly. Both models are configurable.
+- **Staying inside the free tier.** Flash-Lite allows 15 requests per minute per model, and each search makes two calls. Production logs showed the failures were Google-side (503 "high demand" and slow answers), while 429s came only from bursts of testing. So:
+  - *Split the load.* Parsing tries `gemini-3.5-flash-lite` first and explanations try `gemini-3.1-flash-lite` first, each falling back to the other. Each model has its own quota, which roughly doubles the headroom.
+  - *Never cause a 429.* A process-wide gate caps each model at 14 requests/minute. At the cap we go straight to the other model or the deterministic fallback without calling Google.
+  - *Cool down instead of waiting.* After a 429 the model is skipped for Google's `retryDelay` (until midnight Pacific for a daily quota); after a 503, for 20 s; after a timeout, for 10 s. Skipping costs no time, so a degraded search takes about 3 s instead of 20.
+  - *Time budgets from measured latency.* Successful answers took 0.6–5.2 s. Parsing gets 9 s in total, of which the first model gets 5.5 s; explanations get 6 s, of which the first model gets 4 s. If parsing had to fall back, the explanation call is skipped.
+  - *Readable failures.* Every attempt logs the operation, model, latency and Google's status, message, quota id and retry delay (never the key or the prompt).
 - **No database.** Open Library responses are cached in memory per instance (6 hours).
 
 ## Features
@@ -215,13 +224,14 @@ Within a tier: the year named in the query → the matched author's place on the
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 133 tests offline in about a second. No test calls Gemini or the network.
+`cd api && dotnet test` runs 146 tests offline in about a second. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
 | Unit | Normalizer, title variants and near matches, author name matching, every tier A–E, adaptation demotion, collections, series, ranker order and determinism, best-match rule, fallback parser, template sentences |
+| Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
-| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
+| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
 | API | `WebApplicationFactory` with fakes: response contract, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
 
 ## Future improvements

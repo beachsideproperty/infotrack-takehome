@@ -57,7 +57,7 @@ public sealed class GeminiQueryParser(GeminiClient gemini, IOptions<GeminiOption
     public async Task<IReadOnlyList<QueryHypothesis>> ParseAsync(string query, CancellationToken cancellationToken)
     {
         var userText = "Reader's text (JSON string): " + JsonSerializer.Serialize(query);
-        var response = await gemini.GenerateJsonAsync<Response>(SystemPrompt, userText, Schema, options.Value.ParseBudget, cancellationToken);
+        var response = await gemini.GenerateJsonAsync<Response>(options.Value.Parse, SystemPrompt, userText, Schema, cancellationToken);
         return Sanitize(query, response.Hypotheses ?? []);
     }
 
