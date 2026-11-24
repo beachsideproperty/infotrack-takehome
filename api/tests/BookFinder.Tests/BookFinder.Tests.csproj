@@ -14,10 +14,12 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="BookFinder.Tests.Support" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\BookFinder.Api\BookFinder.Api.csproj" />
+    <ProjectReference Include="..\..\src\BookFinder.Infrastructure\BookFinder.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
