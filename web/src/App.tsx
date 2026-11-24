@@ -1,43 +1,145 @@
-import { StatusPill } from './components/StatusPill'
+import { useEffect, useRef, useState } from 'react'
+import { AuthorOnlyView } from './components/AuthorOnlyView'
+import { ErrorCard } from './components/ErrorCard'
+import { Footer } from './components/Footer'
+import { Header } from './components/Header'
+import { HowItWorks } from './components/HowItWorks'
+import { LoadingView } from './components/LoadingView'
+import { NoMatchView } from './components/NoMatchView'
+import { DegradedBanner, TemplateNote } from './components/Notices'
+import { ResultsView } from './components/ResultsView'
+import { SearchForm } from './components/SearchForm'
+import { searchedFor } from './lib/labels'
+import type { SearchResponse } from './lib/types'
 import { useApiStatus } from './lib/useApiStatus'
+import { useSearch, type SearchState } from './lib/useSearch'
+import { useSlashToFocus } from './lib/useSlashToFocus'
 
 export default function App() {
-  const { status, retry } = useApiStatus()
+  const { status, retry: retryStatus } = useApiStatus()
+  const { state, validation, search, reset, clearValidation } = useSearch()
+  // A ?q= link pre-fills the box (and is searched once on load, below).
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get('q') ?? '')
+  const inputRef = useRef<HTMLInputElement>(null)
+  useSlashToFocus(inputRef)
+
+  const run = (q: string) => {
+    setQuery(q)
+    void search(q)
+    // Shareable link to this search (replace, not push: the back button isn't wired to search state).
+    if (q.trim()) window.history.replaceState(null, '', `?q=${encodeURIComponent(q.trim())}`)
+  }
+
+  // Opening a ?q= link runs that search once on load (the ref stops React's dev double-run from
+  // sending two requests, which would spend Gemini quota twice).
+  const ranInitial = useRef(false)
+  useEffect(() => {
+    if (ranInitial.current) return
+    ranInitial.current = true
+    if (query) void search(query)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
+
+  const home = state.status === 'idle'
+  const showHowItWorks = () => {
+    reset()
+    // After the home layout renders, bring the section into view and move focus there.
+    requestAnimationFrame(() => {
+      const section = document.getElementById('how')
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      section?.focus({ preventScroll: true })
+    })
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-[18px] sm:px-8">
-        <div className="flex items-baseline gap-2.5">
-          <span className="font-display text-2xl font-semibold tracking-[-0.01em]">Book Finder</span>
-          <span className="text-[13px] text-muted">find the book you half remember</span>
-        </div>
-        <StatusPill status={status} onRetry={retry} />
-      </header>
+      <Header
+        status={status}
+        onRetryStatus={retryStatus}
+        onHome={() => {
+          reset()
+          setQuery('')
+          window.history.replaceState(null, '', window.location.pathname)
+          inputRef.current?.focus()
+        }}
+        onHowItWorks={showHowItWorks}
+      />
 
-      <main className="mx-auto flex w-full max-w-[816px] flex-1 flex-col gap-4 px-4 py-16 sm:py-24">
-        <h1 className="font-display text-[36px] font-normal leading-[1.05] tracking-[-0.02em] sm:text-[52px]">
-          What book are you thinking of?
-        </h1>
-        <p className="text-[17px] text-muted">
-          Type whatever you remember: a title, an author, a character, a year. Messy is fine.
-        </p>
-        <div className="mt-4 rounded-xl border border-line bg-card p-5 text-ink-soft">
-          Search isn’t wired up yet. For now this page checks that the API is reachable.
-        </div>
+      <main
+        className={`mx-auto flex w-full flex-1 flex-col ${
+          home ? 'max-w-[880px] gap-10 px-5 pt-14 pb-16 sm:px-8 sm:pt-24' : 'max-w-[1120px] gap-8 px-5 pt-8 pb-16 sm:px-8 sm:pt-12'
+        }`}
+      >
+        <SearchForm
+          home={home}
+          value={query}
+          onChange={(v) => {
+            setQuery(v)
+            if (validation) clearValidation()
+          }}
+          onSubmit={run}
+          loading={state.status === 'loading'}
+          validation={validation}
+          showExamples={state.status === 'idle' || (state.status === 'done' && state.response.mode !== 'noMatch')}
+          inputRef={inputRef}
+        />
+
+        <Content state={state} onSearch={run} onRetry={() => state.status === 'error' && run(state.query)} />
+
+        {home && <HowItWorks />}
       </main>
 
-      <footer className="flex flex-wrap justify-between gap-2 border-t border-line px-4 py-5 text-[13px] text-muted sm:px-8">
-        <span>
-          Book data from{' '}
-          <a className="text-accent underline underline-offset-2" href="https://openlibrary.org">
-            Open Library
-          </a>{' '}
-          · AI by Gemini
-        </span>
-        <a className="text-accent underline underline-offset-2" href="https://github.com/beachsideproperty/infotrack-takehome">
-          Source on GitHub
-        </a>
-      </footer>
+      <Footer />
+      <Announcer state={state} />
+    </div>
+  )
+}
+
+function Content({ state, onSearch, onRetry }: { state: SearchState; onSearch: (q: string) => void; onRetry: () => void }) {
+  switch (state.status) {
+    case 'idle':
+      return null
+    case 'loading':
+      return <LoadingView startedAt={state.startedAt} />
+    case 'error':
+      return <ErrorCard error={state.error} onRetry={onRetry} />
+    case 'done':
+      return <Results response={state.response} onSearch={onSearch} />
+  }
+}
+
+function Results({ response, onSearch }: { response: SearchResponse; onSearch: (q: string) => void }) {
+  const line = searchedFor(response)
+  return (
+    <>
+      {response.parser === 'fallback' && <DegradedBanner />}
+      {line && <p className="-mt-4 text-[13px] text-muted">{line}</p>}
+      {response.mode === 'authorOnly' && <AuthorOnlyView response={response} />}
+      {response.mode === 'noMatch' && <NoMatchView response={response} onSearch={onSearch} />}
+      {response.mode === 'match' && <ResultsView response={response} />}
+      {response.results.length > 0 && response.explanations === 'template' && <TemplateNote />}
+    </>
+  )
+}
+
+/** Screen-reader summary of what just happened (results replace each other without a page load). */
+function Announcer({ state }: { state: SearchState }) {
+  let message = ''
+  if (state.status === 'loading') message = 'Searching…'
+  if (state.status === 'error') message = 'Search failed.'
+  if (state.status === 'done') {
+    const r = state.response
+    const count = `${r.results.length} result${r.results.length === 1 ? '' : 's'}`
+    message =
+      r.mode === 'noMatch'
+        ? `No confident match. ${r.results.length > 0 ? `${count} as guesses.` : ''}`
+        : r.hasBestMatch
+          ? `Best match: ${r.results[0].title}. ${count}.`
+          : `${count}.`
+  }
+  return (
+    <div aria-live="polite" className="sr-only">
+      {message}
     </div>
   )
 }

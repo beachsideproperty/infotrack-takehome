@@ -5,26 +5,14 @@ interface Props {
   onRetry: () => void
 }
 
+/** Shown in the header until the API answers /health (Render's free tier sleeps when idle). */
 export function StatusPill({ status, onRetry }: Props) {
-  if (status.state === 'connected') {
-    return (
-      <span role="status" className="flex items-center gap-2 text-[13px] text-muted">
-        <span aria-hidden="true" className="size-2 rounded-full bg-accent" />
-        API connected · v{status.version}
-      </span>
-    )
-  }
-
   if (status.state === 'unreachable') {
     return (
       <span role="status" className="flex items-center gap-2 text-[13px] text-muted">
         <span aria-hidden="true" className="size-2 rounded-full bg-muted" />
         Server unreachable.
-        <button
-          type="button"
-          onClick={onRetry}
-          className="text-accent underline underline-offset-2 hover:text-accent-dark focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent rounded"
-        >
+        <button type="button" onClick={onRetry} className="rounded text-accent underline underline-offset-2 hover:text-accent-dark">
           Try again
         </button>
       </span>
@@ -33,8 +21,9 @@ export function StatusPill({ status, onRetry }: Props) {
 
   return (
     <span role="status" className="flex items-center gap-2 text-[13px] text-muted">
-      <span aria-hidden="true" className="size-2 rounded-full bg-amber animate-pulse" />
-      Waking up the server…
+      <span aria-hidden="true" className="size-2 rounded-full bg-amber motion-safe:animate-pulse" />
+      <span className="sm:hidden">Waking up…</span>
+      <span className="hidden sm:inline">Waking up the server…</span>
     </span>
   )
 }

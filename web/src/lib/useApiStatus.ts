@@ -21,8 +21,6 @@ export function useApiStatus() {
     let timer: ReturnType<typeof setTimeout> | undefined
     let controller: AbortController | undefined
 
-    setStatus({ state: 'waking' })
-
     const ping = async () => {
       controller = new AbortController()
       const timeout = setTimeout(() => controller?.abort(), REQUEST_TIMEOUT_MS)
@@ -46,6 +44,9 @@ export function useApiStatus() {
     }
   }, [attempt])
 
-  const retry = useCallback(() => setAttempt((n) => n + 1), [])
+  const retry = useCallback(() => {
+    setStatus({ state: 'waking' })
+    setAttempt((n) => n + 1)
+  }, [])
   return { status, retry }
 }
