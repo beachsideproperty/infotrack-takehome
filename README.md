@@ -7,7 +7,7 @@ InfoTrack "Find That Book" take-home. React + TypeScript frontend, .NET 10 Web A
 - **Live demo:** https://infotrack-takehome.vercel.app (web on Vercel)
 - **API health:** https://infotrack-takehome.onrender.com/health (API on Render, free tier: the first request after idling can take ~50 s)
 
-> **Status:** work in progress. The search API (`POST /api/search`) is complete and tested; the search UI is being built next. Until then, try the API with the `curl` examples below.
+> **Status:** feature-complete; final polish in progress.
 
 ## Why .NET 10 and not .NET 8
 
@@ -43,7 +43,7 @@ docker compose up --build
 - Web: http://localhost:5173
 - API: http://localhost:8080/health
 
-The header pill reads "Waking up the server…" until the API answers, then "API connected".
+The header shows "Waking up the server…" until the API answers. Any search can be shared as a link: `http://localhost:5173/?q=austen%20bennet`.
 
 ### Without Docker
 
@@ -73,7 +73,8 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 148 tests, offline, ~1 s
+cd api && dotnet test        # 154 tests, offline, ~1 s
+cd web && npm test           # 31 tests (Vitest + Testing Library), API mocked
 cd web && npm run build      # type-check + production build
 ```
 
@@ -108,7 +109,9 @@ api/                         .NET 10 solution (BookFinder.sln) + Dockerfile
   src/BookFinder.Domain          Records: hypotheses, candidates, tiers, outcomes
   src/BookFinder.Infrastructure  Open Library client (rate limit, cache, retry), Gemini client (model fallback)
   tests/BookFinder.Tests         Unit, golden-query, client and API tests + recorded Open Library JSON
-web/                         Vite + React + TypeScript + Tailwind v4
+web/                         Vite + React + TypeScript + Tailwind v4 (+ Motion, Vitest)
+  src/lib                      API client and types, search state, labels, validation
+  src/components               One component per screen element from the designs
 docker-compose.yml
 ```
 
@@ -150,6 +153,8 @@ docker-compose.yml
 }
 ```
 
+- Each result also has `match: { title: "exact"|"near"|"none", author: "primary"|"contributor"|"none", yearMatched, seriesMember, collection, derivative, keywordOnly }`, so the UI can label it precisely.
+- `noMatch` can still carry results: "closest guesses" from a keyword search, when the query described a book without naming a title or author.
 - Fields with no value are left out (a missing `firstPublishYear` is never `0`). `didYouMean: { title, author }` appears only on `noMatch`; `author: { name, openLibraryId, url }` only on `authorOnly`, for the "all works by …" link.
 - `firstPublishYear` is exactly what Open Library reports, which is sometimes wrong (see design decisions).
 - The brief's sample uses `author` (string) and `first_publish_year`; this API returns `authors[]` (a work can have several) and camelCase, the .NET and TypeScript convention.
@@ -195,6 +200,29 @@ Within a tier: the year named in the query → the matched author's place on the
 
 **Caching:** results are cached by normalized query ("Tolkien Hobbit!" = "tolkien hobbit") for 6 hours, so a repeated search, like the example chips, never spends Gemini quota. A result that needed the rule-based parser or template explanations is kept for only 2 minutes, and Gemini's reading of the query is cached separately, so a better result replaces it once Gemini recovers. Everything is in memory, so a Render restart (the free tier sleeps when idle) starts cold.
 
+**Web app:** one page, one request per search. A `useReducer` state machine (`idle → loading → done | error`) drives the screens from `design/`. A new search aborts the one in flight, so a slow answer can never overwrite a newer one. The three loading steps (Read your words → Searching Open Library → Ranking matches) are paced by a client-side timer over that single request, with skeletons shaped like the real cards. Input is checked with the same rules and wording as the API before sending. Labels come from the API's `match` details, never guessed from the tier letter. Motion adds gentle fade-ins and is switched off for people who ask their OS for reduced motion.
+
+## Failures and unclear results
+
+Every case has a defined behaviour, and the query is never lost:
+
+| Situation | What the API does | What the reader sees |
+|---|---|---|
+| Empty or over 300 characters | 400 ProblemDetails | Inline message under the search box (also checked before sending) |
+| Clear winner | `hasBestMatch: true` | Best-match card + other possible matches |
+| Several plausible books | `hasBestMatch: false` | Ranked list, "No single result clearly beats the rest" |
+| Series ("harry potter") | `isSeries`, series members as near matches | "Books in the Harry Potter series", no winner |
+| Author only ("dickens") | `authorOnly`, most-read works | "Top works by Charles Dickens" + link to all their works |
+| A book described but not named ("a whale and a lighthouse") | `noMatch` + keyword "closest guesses" | "No confident match yet" + guesses labelled "Keyword only" |
+| Not a book ("pizza recipe") | `noMatch`, no Open Library calls | "No confident match yet", honest empty state |
+| Gemini down, slow or rate-limited | Rule-based parser and/or template reasons | "AI is unavailable" banner; note when reasons are templates |
+| Open Library down or slow | One retry, then 502 | "Can't reach Open Library right now" + Try again (query kept) |
+| Open Library rate-limiting us | 503 + `Retry-After` | "Open Library is busy" + countdown |
+| Too many searches from one visitor | 429 + `Retry-After` | "Lots of searches at once" + countdown |
+| API asleep (Render free tier) | — | "Waking up the server…" in the header; a 60 s request timeout, then "Can't reach the search server" + Try again |
+| No cover | — | Coloured block with the title |
+| Wrong year in Open Library | Reported as is | Labelled "First published (Open Library)" |
+
 ## Assumptions and design decisions
 
 - **Accuracy over speed.** Each top candidate's work record is fetched to separate primary authors from contributors, as the brief requires. That costs a couple of seconds under Open Library's rate limit; caching and the staged loading state cover it. With more time: stream partial results.
@@ -219,6 +247,7 @@ Within a tier: the year named in the query → the matched author's place on the
 
 ## Features
 
+- Search UI built from the designs: first visit with example chips and how it works, staged loading, best match, ranked lists, author page, no-match with guesses and "Did you mean", AI-unavailable banner, error cards; desktop and mobile; keyboard (`/` focuses the search box, Enter searches) and screen-reader announcements; shareable `?q=` links.
 - One input for any mix of title, author, character, year and noise, with typo and diacritics tolerance.
 - Gemini hypotheses (up to 3), including titles from character hints ("austen bennet" → *Pride and Prejudice*) and published title forms ("1984" → *Nineteen Eighty-Four*).
 - The brief's A–E matching hierarchy with primary-author resolution from work records, adaptation detection, duplicate-work collapsing, series and box-set handling.
@@ -228,11 +257,12 @@ Within a tier: the year named in the query → the matched author's place on the
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 148 tests offline in about a second. No test calls Gemini or the network.
+`cd api && dotnet test` runs 154 tests offline in about a second; `cd web && npm test` runs 31 UI tests with the API mocked. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
 | Unit | Normalizer, title variants and near matches, author name matching, every tier A–E, adaptation demotion, collections, series, ranker order and determinism, best-match rule, fallback parser, template sentences |
+| Web (Vitest + Testing Library) | Every result mode (best match, ranked list, series, author only, keyword guesses), "Did you mean" re-search, inline validation without calling the API, server 400 inline, 429 countdown, 502 card with Try again re-running the same query, AI-unavailable banner, example chips, `/` shortcut, `?q=` links, a slow older answer never overwriting a newer one, label and "Searched for" wording, the loading-step timer |
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
 | Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
