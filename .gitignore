@@ -1,0 +1,36 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+web/.env.local
+
+# .NET
+api/**/bin/
+api/**/obj/
+api/**/TestResults/
+*.user
+.vs/
+
+# Node / Vite
+node_modules/
+web/dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Deploy tooling
+.vercel
+*.local
+*.log
+dist-ssr/
+
+# Local-only working material (brief, spec, plans, design handoff)
+docs/
+design/
+KICKOFF_PROMPT.md

@@ -1,0 +1,36 @@
+# Local dev: `docker compose up`, then open http://localhost:5173
+services:
+  api:
+    build: ./api
+    ports:
+      - "8080:10000"
+    environment:
+      PORT: "10000"
+      ASPNETCORE_ENVIRONMENT: Development
+      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENLIBRARY_CONTACT_EMAIL: ${OPENLIBRARY_CONTACT_EMAIL:-}
+    healthcheck:
+      # The aspnet image has no curl; bash's /dev/tcp is enough to see the port is up.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/10000' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      # Read by the browser, so it points at the host port, not the container name.
+      VITE_API_URL: http://localhost:8080
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+    depends_on:
+      - api
+
+volumes:
+  web_node_modules:
