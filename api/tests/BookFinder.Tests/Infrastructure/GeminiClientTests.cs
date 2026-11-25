@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using BookFinder.Application.Ports;
+using BookFinder.Domain;
 using BookFinder.Infrastructure.Gemini;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -180,8 +181,53 @@ public class GeminiClientTests
 
         var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
 
-        Assert.Contains("primary: HTTP 503, UNAVAILABLE", ex.Message);
-        Assert.Contains("backup: HTTP 503, UNAVAILABLE", ex.Message);
+        Assert.Equal(LlmFailureReason.Overloaded, ex.Reason);
+        Assert.StartsWith("overloaded", ex.Message);
+        Assert.Contains("primary: overloaded: HTTP 503, UNAVAILABLE", ex.Message);
+        Assert.Contains("backup: overloaded: HTTP 503, UNAVAILABLE", ex.Message);
+    }
+
+    [Fact]
+    public async Task Daily_quota_on_both_models_is_reported_as_daily_quota_and_stays_that_way_while_skipped()
+    {
+        var handler = new StubHandler((_, _) => Task.FromResult(RateLimited("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20s")));
+        var (client, _) = Create(handler);
+
+        var first = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(client));
+        var second = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(client)); // both skipped, no calls
+
+        Assert.Equal(LlmFailureReason.DailyQuota, first.Reason);
+        Assert.Equal(LlmFailureReason.DailyQuota, second.Reason);
+        Assert.Contains("daily quota", second.Message);
+        Assert.Equal(2, handler.Calls);
+    }
+
+    [Fact]
+    public async Task Mixed_failures_report_the_one_that_clears_soonest()
+    {
+        var handler = new StubHandler((req, _) => Task.FromResult(Calls(req, "primary")
+            ? RateLimited("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20s")
+            : StubHandler.Json("""{"error":{"code":503,"status":"UNAVAILABLE"}}""", HttpStatusCode.ServiceUnavailable)));
+
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+
+        Assert.Equal(LlmFailureReason.Overloaded, ex.Reason); // "try again in a minute" beats "try tomorrow"
+    }
+
+    [Fact]
+    public async Task A_per_minute_429_is_rate_limited_and_our_own_cap_is_too()
+    {
+        var limited = new StubHandler((_, _) => Task.FromResult(RateLimited("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "30s")));
+        var google = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(limited).Client));
+
+        var ok = new StubHandler((_, _) => Task.FromResult(Candidate("""{"value":"ok"}""")));
+        var (client, _) = Create(ok, rpm: 1);
+        await Generate(client);
+        await Generate(client);
+        var ours = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(client));
+
+        Assert.Equal(LlmFailureReason.RateLimited, google.Reason);
+        Assert.Equal(LlmFailureReason.RateLimited, ours.Reason);
     }
 
     [Fact]
@@ -197,7 +243,8 @@ public class GeminiClientTests
     {
         var handler = new StubHandler((_, _) => Task.FromResult(Candidate("{}")));
 
-        await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler, apiKey: null).Client));
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler, apiKey: null).Client));
+        Assert.Equal(LlmFailureReason.NotConfigured, ex.Reason);
         Assert.Equal(0, handler.Calls);
     }
 

@@ -16,4 +16,9 @@ public interface IExplanationWriter
     Task<IReadOnlyDictionary<string, string>> WriteAsync(string query, IReadOnlyList<RankedCandidate> candidates, CancellationToken cancellationToken);
 }
 
-public sealed class LlmUnavailableException(string message, Exception? inner = null) : Exception(message, inner);
+/// <param name="Reason">The overall reason when several models were tried; the message has each model's detail.</param>
+public sealed class LlmUnavailableException(string message, LlmFailureReason reason = LlmFailureReason.Error, Exception? inner = null)
+    : Exception(message, inner)
+{
+    public LlmFailureReason Reason { get; } = reason;
+}

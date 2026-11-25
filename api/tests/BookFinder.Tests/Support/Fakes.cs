@@ -6,7 +6,7 @@ namespace BookFinder.Tests.Support;
 /// <summary>Stands in for Gemini: returns fixed hypotheses, or throws to force the rule-based fallback.</summary>
 public sealed class FakeLlmParser(Func<string, IReadOnlyList<QueryHypothesis>>? parse = null) : ILlmQueryParser
 {
-    public static FakeLlmParser Unavailable => new(_ => throw new LlmUnavailableException("test: LLM down"));
+    public static FakeLlmParser Unavailable => new(_ => throw new LlmUnavailableException("test: LLM down", LlmFailureReason.Overloaded));
 
     public static FakeLlmParser Returning(params QueryHypothesis[] hypotheses) => new(_ => hypotheses);
 

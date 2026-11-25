@@ -45,4 +45,9 @@ export interface SearchResponse {
   hasBestMatch: boolean
   parser: 'llm' | 'fallback'
   explanations: 'llm' | 'template'
+  /** Why Gemini wasn't used (for the parse, or else the explanations). Absent when it answered. */
+  aiIssue?: AiIssue
 }
+
+export type AiIssue = 'notConfigured' | 'overloaded' | 'timedOut' | 'rateLimited' | 'dailyQuota' | 'error'
+

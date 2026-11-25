@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using BookFinder.Application.Ports;
+using BookFinder.Domain;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -28,7 +29,7 @@ public sealed class GeminiClient(
         GeminiOptions.CallProfile profile, string systemPrompt, string userText, JsonObject responseSchema, CancellationToken cancellationToken)
     {
         var opts = options.Value;
-        if (!opts.IsConfigured) throw new LlmUnavailableException("GEMINI_API_KEY is not set.");
+        if (!opts.IsConfigured) throw new LlmUnavailableException("GEMINI_API_KEY is not set.", LlmFailureReason.NotConfigured);
 
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(profile.Budget);
@@ -36,14 +37,16 @@ public sealed class GeminiClient(
         var models = Order(opts, profile);
         var body = BuildRequest(systemPrompt, userText, responseSchema);
         var failures = new List<string>();
+        var reasons = new List<GeminiModelGate.Failure>();
         var attempted = 0;
 
         foreach (var model in models)
         {
-            if (!gate.TryAcquire(model, out var skipReason))
+            if (!gate.TryAcquire(model, out var skipReason, out var blockedBy))
             {
                 logger.LogInformation("Gemini {Operation} {Model} skipped: {Reason}", profile.Operation, model, skipReason);
                 failures.Add($"{model}: skipped ({skipReason})");
+                reasons.Add(blockedBy ?? GeminiModelGate.Failure.Other);
                 continue;
             }
 
@@ -68,17 +71,21 @@ public sealed class GeminiClient(
             catch (OperationCanceledException)
             {
                 gate.ReportFailure(model, GeminiModelGate.Failure.TimedOut);
-                failures.Add($"{model}: timed out after {stopwatch.ElapsedMilliseconds} ms");
+                reasons.Add(GeminiModelGate.Failure.TimedOut);
+                failures.Add($"{model}: timed-out: no answer after {stopwatch.ElapsedMilliseconds} ms");
             }
             catch (GeminiCallException ex)
             {
-                gate.ReportFailure(model, ex.Failure, CooldownEnd(ex.Error));
-                failures.Add($"{model}: {ex.Error}");
+                var failure = ex.Failure == GeminiModelGate.Failure.RateLimited && ex.Error.IsDailyQuota ? GeminiModelGate.Failure.DailyQuota : ex.Failure;
+                gate.ReportFailure(model, failure, CooldownEnd(ex.Error));
+                reasons.Add(failure);
+                failures.Add($"{model}: {Label(failure)}: {ex.Error}");
             }
             catch (Exception ex) when (ex is HttpRequestException or JsonException)
             {
                 gate.ReportFailure(model, GeminiModelGate.Failure.Other);
-                failures.Add($"{model}: {ex.GetType().Name}: {ex.Message}");
+                reasons.Add(GeminiModelGate.Failure.Other);
+                failures.Add($"{model}: error: {ex.GetType().Name}: {ex.Message}");
             }
 
             logger.LogWarning("Gemini {Operation} {Model} failed after {Ms} ms: {Reason}",
@@ -86,8 +93,44 @@ public sealed class GeminiClient(
             if (budget.IsCancellationRequested) break;
         }
 
-        throw new LlmUnavailableException(string.Join("; ", failures));
+        var overall = Overall(reasons);
+        throw new LlmUnavailableException($"{Label(overall)} ({string.Join("; ", failures)})", overall);
     }
+
+    /// <summary>
+    /// One reason for the user when models failed differently: the one that clears soonest, since that's
+    /// when trying again is worth it (an overload passes in seconds; a daily quota lasts until midnight).
+    /// </summary>
+    public static LlmFailureReason Overall(IReadOnlyCollection<GeminiModelGate.Failure> failures)
+    {
+        GeminiModelGate.Failure[] soonestFirst =
+        [
+            GeminiModelGate.Failure.Overloaded, GeminiModelGate.Failure.TimedOut, GeminiModelGate.Failure.RateLimited,
+            GeminiModelGate.Failure.Other, GeminiModelGate.Failure.DailyQuota,
+        ];
+        var pick = soonestFirst.FirstOrDefault(failures.Contains, GeminiModelGate.Failure.Other);
+        return pick switch
+        {
+            GeminiModelGate.Failure.Overloaded => LlmFailureReason.Overloaded,
+            GeminiModelGate.Failure.TimedOut => LlmFailureReason.TimedOut,
+            GeminiModelGate.Failure.RateLimited => LlmFailureReason.RateLimited,
+            GeminiModelGate.Failure.DailyQuota => LlmFailureReason.DailyQuota,
+            _ => LlmFailureReason.Error,
+        };
+    }
+
+    private static string Label(GeminiModelGate.Failure failure) => Label(Overall([failure]));
+
+    /// <summary>Short, greppable tag for logs: "overloaded", "daily-quota", …</summary>
+    public static string Label(LlmFailureReason reason) => reason switch
+    {
+        LlmFailureReason.NotConfigured => "not-configured",
+        LlmFailureReason.Overloaded => "overloaded",
+        LlmFailureReason.TimedOut => "timed-out",
+        LlmFailureReason.RateLimited => "rate-limited",
+        LlmFailureReason.DailyQuota => "daily-quota",
+        _ => "error",
+    };
 
     private static List<string> Order(GeminiOptions opts, GeminiOptions.CallProfile profile)
     {

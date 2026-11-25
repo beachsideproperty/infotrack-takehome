@@ -103,6 +103,7 @@ public class SearchEndpointTests(WebApplicationFactory<Program> factory) : IClas
 
         Assert.Equal("noMatch", body.GetProperty("mode").GetString());
         Assert.Equal(0, body.GetProperty("results").GetArrayLength());
+        Assert.False(body.TryGetProperty("aiIssue", out _)); // Gemini answered: nothing to report
     }
 
     [Fact]
@@ -112,6 +113,7 @@ public class SearchEndpointTests(WebApplicationFactory<Program> factory) : IClas
 
         Assert.Equal("fallback", body.GetProperty("parser").GetString());
         Assert.Equal("template", body.GetProperty("explanations").GetString());
+        Assert.Equal("overloaded", body.GetProperty("aiIssue").GetString());
         Assert.Equal("The Hobbit", body.GetProperty("results")[0].GetProperty("title").GetString());
     }
 

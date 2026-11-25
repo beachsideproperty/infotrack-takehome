@@ -112,7 +112,7 @@ function Results({ response, onSearch }: { response: SearchResponse; onSearch: (
   const line = searchedFor(response)
   return (
     <>
-      {response.parser === 'fallback' && <DegradedBanner />}
+      {response.parser === 'fallback' && <DegradedBanner issue={response.aiIssue} />}
       {line && <p className="-mt-4 text-[13px] text-muted">{line}</p>}
       {response.mode === 'authorOnly' && <AuthorOnlyView response={response} />}
       {response.mode === 'noMatch' && <NoMatchView response={response} onSearch={onSearch} />}

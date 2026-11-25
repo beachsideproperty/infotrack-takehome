@@ -73,8 +73,8 @@ public sealed class SearchService(
             var guesses = await KeywordGuessesAsync(hypotheses[0], cancellationToken);
             if (guesses.Count == 0) return NoMatch(query, parsed);
 
-            var (guessResults, guessesFromLlm) = await ExplainAsync(query, guesses, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
-            return NoMatch(query, parsed) with { Results = guessResults, ExplanationsFromLlm = guessesFromLlm };
+            var (guessResults, guessesFromLlm, guessFailure) = await ExplainAsync(query, guesses, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
+            return NoMatch(query, parsed) with { Results = guessResults, ExplanationsFromLlm = guessesFromLlm, ExplanationFailure = guessFailure };
         }
 
         // Keyword-only readings add nothing once another reading names a title or author.
@@ -103,10 +103,10 @@ public sealed class SearchService(
 
         if (ranked.Count == 0) return NoMatch(query, parsed);
 
-        var (results, fromLlm) = await ExplainAsync(query, ranked, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
+        var (results, fromLlm, explanationFailure) = await ExplainAsync(query, ranked, hypotheses, parsed.Parser == ParserKind.Llm, cancellationToken);
         // A series ("harry potter") has no single answer: always a ranked list.
         var hasBestMatch = mode == SearchMode.Match && !hypotheses[0].IsSeries && Ranker.HasClearWinner(ranked);
-        return new SearchOutcome(query, parsed, mode, null, results, hasBestMatch, fromLlm, author);
+        return new SearchOutcome(query, parsed, mode, null, results, hasBestMatch, fromLlm, author, explanationFailure);
     }
 
     /// <summary>Gemini's reading, cached separately so a degraded result can be redone without re-parsing.</summary>
@@ -124,8 +124,8 @@ public sealed class SearchService(
         }
         catch (LlmUnavailableException ex)
         {
-            logger.LogWarning("LLM parser unavailable, using rule-based fallback: {Reason}", ex.Message);
-            return RuleBasedQueryParser.Parse(query);
+            logger.LogWarning("LLM parser unavailable ({LlmFailure}), using rule-based fallback: {Reason}", ex.Reason, ex.Message);
+            return RuleBasedQueryParser.Parse(query) with { LlmFailure = ex.Reason };
         }
     }
 
@@ -293,10 +293,11 @@ public sealed class SearchService(
     /// One batched Gemini call; any missing, empty or overlong sentence falls back to its template.
     /// Skipped when parsing just fell back: Gemini is struggling, so don't spend more time or quota on it.
     /// </summary>
-    private async Task<(IReadOnlyList<SearchResult> Results, bool FromLlm)> ExplainAsync(
+    private async Task<(IReadOnlyList<SearchResult> Results, bool FromLlm, LlmFailureReason? Failure)> ExplainAsync(
         string query, IReadOnlyList<RankedCandidate> ranked, IReadOnlyList<QueryHypothesis> hypotheses, bool tryLlm, CancellationToken cancellationToken)
     {
         IReadOnlyDictionary<string, string> written = new Dictionary<string, string>();
+        LlmFailureReason? failure = null;
         if (tryLlm)
         {
             try
@@ -305,7 +306,8 @@ public sealed class SearchService(
             }
             catch (LlmUnavailableException ex)
             {
-                logger.LogWarning("LLM explanations unavailable, using templates: {Reason}", ex.Message);
+                logger.LogWarning("LLM explanations unavailable ({LlmFailure}), using templates: {Reason}", ex.Reason, ex.Message);
+                failure = ex.Reason;
             }
         }
 
@@ -320,6 +322,6 @@ public sealed class SearchService(
             return new SearchResult(r, TemplateExplanations.For(r, hypothesis, i));
         }).ToList();
 
-        return (results, allFromLlm);
+        return (results, allFromLlm, failure);
     }
 }

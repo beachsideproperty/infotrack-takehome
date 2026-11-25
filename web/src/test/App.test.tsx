@@ -141,6 +141,15 @@ describe('App', () => {
     expect(screen.getByText(/come from a template/)).toBeInTheDocument()
   })
 
+  it('says why the AI was unavailable when the API knows', async () => {
+    mockApi({
+      body: { ...hobbit, parser: 'fallback', explanations: 'template', aiIssue: 'dailyQuota', interpretedAs: [{ text: 'tolkien hobbit', keywords: [], isSeries: false }] },
+    })
+    await searchFor('tolkien hobbit')
+
+    expect(await screen.findByText(/Today’s free AI quota is used up/)).toBeInTheDocument()
+  })
+
   it('runs an example chip and focuses the search box on "/"', async () => {
     const sent = mockApi({ body: hobbit })
     const user = userEvent.setup()

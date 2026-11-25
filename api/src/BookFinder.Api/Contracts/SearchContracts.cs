@@ -13,7 +13,8 @@ public sealed record SearchResponse(
     IReadOnlyList<BookResult> Results,
     bool HasBestMatch,
     string Parser,
-    string Explanations);
+    string Explanations,
+    string? AiIssue = null);
 
 /// <summary>Author-only searches: who the works are by, with a link to all their works on Open Library.</summary>
 public sealed record AuthorLink(string Name, string OpenLibraryId, string Url);
@@ -63,7 +64,23 @@ public static class SearchContractMapping
         outcome.Results.Select(ToResult).ToList(),
         outcome.HasBestMatch,
         outcome.Parsed.Parser == ParserKind.Llm ? "llm" : "fallback",
-        outcome.ExplanationsFromLlm ? "llm" : "template");
+        outcome.ExplanationsFromLlm ? "llm" : "template",
+        AiIssue(outcome));
+
+    /// <summary>
+    /// Why Gemini wasn't used, so the UI can say "busy, try again in a minute" vs "daily quota used up".
+    /// The parser's failure wins: it's the one that changes the results, not just the wording.
+    /// </summary>
+    private static string? AiIssue(SearchOutcome outcome) => (outcome.Parsed.LlmFailure ?? outcome.ExplanationFailure) switch
+    {
+        null => null,
+        LlmFailureReason.NotConfigured => "notConfigured",
+        LlmFailureReason.Overloaded => "overloaded",
+        LlmFailureReason.TimedOut => "timedOut",
+        LlmFailureReason.RateLimited => "rateLimited",
+        LlmFailureReason.DailyQuota => "dailyQuota",
+        _ => "error",
+    };
 
     private static BookResult ToResult(SearchResult result)
     {

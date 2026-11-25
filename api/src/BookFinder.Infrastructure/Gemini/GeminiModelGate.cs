@@ -21,11 +21,15 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
         Overloaded,
         TimedOut,
         RateLimited,
+        DailyQuota,
         Other,
     }
 
     /// <summary>Reserves one request on <paramref name="model"/>, or says why it can't be used right now.</summary>
-    public bool TryAcquire(string model, out string? reason)
+    public bool TryAcquire(string model, out string? reason) => TryAcquire(model, out reason, out _);
+
+    /// <param name="blockedBy">When skipped: the failure behind the cooldown, or <see cref="Failure.RateLimited"/> for our own cap.</param>
+    public bool TryAcquire(string model, out string? reason, out Failure? blockedBy)
     {
         var now = time.GetUtcNow();
         lock (_lock)
@@ -33,7 +37,8 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
             var state = State(model);
             if (state.CoolingUntil > now)
             {
-                reason = $"cooling down {(state.CoolingUntil - now).TotalSeconds:0}s after {state.CoolingBecause}";
+                reason = $"cooling down {(state.CoolingUntil - now).TotalSeconds:0}s after {Describe(state.CoolingBecause)}";
+                blockedBy = state.CoolingBecause;
                 return false;
             }
 
@@ -41,11 +46,13 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
             if (state.Recent.Count >= options.Value.RequestsPerMinutePerModel)
             {
                 reason = $"local limit of {options.Value.RequestsPerMinutePerModel} requests/minute reached";
+                blockedBy = Failure.RateLimited;
                 return false;
             }
 
             state.Recent.Enqueue(now);
             reason = null;
+            blockedBy = null;
             return true;
         }
     }
@@ -57,6 +64,7 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
         var length = failure switch
         {
             Failure.RateLimited => TimeSpan.FromSeconds(60),
+            Failure.DailyQuota => TimeSpan.FromHours(1), // normally overridden by the reset time
             Failure.Overloaded => o.OverloadedCooldown,
             Failure.TimedOut => o.TimeoutCooldown,
             _ => TimeSpan.Zero,
@@ -69,13 +77,7 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
             if (cooldownEnd > state.CoolingUntil)
             {
                 state.CoolingUntil = cooldownEnd;
-                state.CoolingBecause = failure switch
-                {
-                    Failure.RateLimited => "a rate limit",
-                    Failure.Overloaded => "an overload",
-                    Failure.TimedOut => "a timeout",
-                    _ => "an error",
-                };
+                state.CoolingBecause = failure;
             }
         }
     }
@@ -84,6 +86,15 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
     {
         lock (_lock) State(model).CoolingUntil = DateTimeOffset.MinValue;
     }
+
+    private static string Describe(Failure failure) => failure switch
+    {
+        Failure.RateLimited => "a rate limit",
+        Failure.DailyQuota => "the daily quota ran out",
+        Failure.Overloaded => "an overload",
+        Failure.TimedOut => "a timeout",
+        _ => "an error",
+    };
 
     private ModelState State(string model)
     {
@@ -97,6 +108,6 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
 
         public DateTimeOffset CoolingUntil { get; set; } = DateTimeOffset.MinValue;
 
-        public string CoolingBecause { get; set; } = string.Empty;
+        public Failure CoolingBecause { get; set; } = Failure.Other;
     }
 }

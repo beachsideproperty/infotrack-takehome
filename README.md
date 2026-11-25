@@ -73,8 +73,8 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 154 tests, offline, ~1 s
-cd web && npm test           # 31 tests (Vitest + Testing Library), API mocked
+cd api && dotnet test        # 157 tests, offline, ~1 s
+cd web && npm test           # 32 tests (Vitest + Testing Library), API mocked
 cd web && npm run build      # type-check + production build
 ```
 
@@ -154,6 +154,7 @@ docker-compose.yml
 ```
 
 - Each result also has `match: { title: "exact"|"near"|"none", author: "primary"|"contributor"|"none", yearMatched, seriesMember, collection, derivative, keywordOnly }`, so the UI can label it precisely.
+- `aiIssue` appears only when Gemini wasn't used, for the parse or else the explanations: `"overloaded"` (Google's 503 "high demand"), `"timedOut"`, `"rateLimited"` (per-minute, Google's or our own cap), `"dailyQuota"` (free tier used up until midnight Pacific), `"notConfigured"` or `"error"`. When the two models failed differently it reports the one that clears soonest, since that's when trying again helps.
 - `noMatch` can still carry results: "closest guesses" from a keyword search, when the query described a book without naming a title or author.
 - Fields with no value are left out (a missing `firstPublishYear` is never `0`). `didYouMean: { title, author }` appears only on `noMatch`; `author: { name, openLibraryId, url }` only on `authorOnly`, for the "all works by …" link.
 - `firstPublishYear` is exactly what Open Library reports, which is sometimes wrong (see design decisions).
@@ -215,7 +216,7 @@ Every case has a defined behaviour, and the query is never lost:
 | Author only ("dickens") | `authorOnly`, most-read works | "Top works by Charles Dickens" + link to all their works |
 | A book described but not named ("a whale and a lighthouse") | `noMatch` + keyword "closest guesses" | "No confident match yet" + guesses labelled "Keyword only" |
 | Not a book ("pizza recipe") | `noMatch`, no Open Library calls | "No confident match yet", honest empty state |
-| Gemini down, slow or rate-limited | Rule-based parser and/or template reasons | "AI is unavailable" banner; note when reasons are templates |
+| Gemini down, slow or rate-limited | Rule-based parser and/or template reasons; `aiIssue` says why, and the log line names each model's failure | Banner that says why ("Google's AI is busy right now… Try again in a minute", "Today's free AI quota is used up…"); note when reasons are templates |
 | Open Library down or slow | One retry, then 502 | "Can't reach Open Library right now" + Try again (query kept) |
 | Open Library rate-limiting us | 503 + `Retry-After` | "Open Library is busy" + countdown |
 | Too many searches from one visitor | 429 + `Retry-After` | "Lots of searches at once" + countdown |
@@ -257,7 +258,7 @@ Every case has a defined behaviour, and the query is never lost:
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 154 tests offline in about a second; `cd web && npm test` runs 31 UI tests with the API mocked. No test calls Gemini or the network.
+`cd api && dotnet test` runs 157 tests offline in about a second; `cd web && npm test` runs 32 UI tests with the API mocked. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
@@ -265,7 +266,7 @@ Every case has a defined behaviour, and the query is never lost:
 | Web (Vitest + Testing Library) | Every result mode (best match, ranked list, series, author only, keyword guesses), "Did you mean" re-search, inline validation without calling the API, server 400 inline, 429 countdown, 502 card with Try again re-running the same query, AI-unavailable banner, example chips, `/` shortcut, `?q=` links, a slow older answer never overwriting a newer one, label and "Searched for" wording, the loading-step timer |
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
-| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
+| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
 | API | `WebApplicationFactory` with fakes: response contract, author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
 
 ## Future improvements
