@@ -22,7 +22,7 @@ export function ResultCard({ result, rank, label, index }: Props) {
       transition={{ duration: 0.25, delay: Math.min(index, 6) * 0.04 }}
       className="flex flex-col gap-1.5 rounded-xl border border-line bg-card p-[18px]"
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-3.5">
         <Cover id={result.openLibraryId} title={result.title} url={result.coverUrl} size="card" />
         <div className="min-w-0 flex-auto">
           <h3 className="font-display text-xl leading-tight font-semibold">{result.title}</h3>
@@ -30,13 +30,16 @@ export function ResultCard({ result, rank, label, index }: Props) {
             {authorsLine(result)}
             {result.firstPublishYear && ` · ${result.firstPublishYear}`}
           </p>
+          {/* Beside the cover, so the cover and the facts about the book read as one block. */}
+          <div className="mt-1.5 flex">
+            <Badge>{label}</Badge>
+          </div>
         </div>
         <span className="text-[13px] font-medium text-muted" aria-label={`Rank ${rank}`}>
           #{rank}
         </span>
       </div>
-      <Badge>{label}</Badge>
-      <p className="text-sm text-ink-soft">{result.explanation}</p>
+      <p className="mt-1 text-sm text-ink-soft">{result.explanation}</p>
       <OpenLibraryLink url={result.url} title={result.title} />
     </m.article>
   )

@@ -27,7 +27,7 @@ export function LoadingView({ startedAt }: { startedAt: number }) {
         transition={{ duration: 0.3 }}
         className="flex flex-wrap gap-8 rounded-[14px] border border-line bg-card p-5 sm:p-8"
       >
-        <div className="h-[162px] w-[108px] flex-none rounded bg-skeleton sm:h-[270px] sm:w-[180px]" />
+        <div className="h-[180px] w-[120px] flex-none rounded bg-skeleton sm:h-[330px] sm:w-[220px]" />
         <div className="flex min-w-0 flex-[999_1_320px] flex-col gap-4">
           <div className="h-3.5 w-[120px] rounded bg-skeleton" />
           <div className="h-12 w-[55%] rounded-md bg-skeleton" />
@@ -40,7 +40,7 @@ export function LoadingView({ startedAt }: { startedAt: number }) {
 
       <div aria-hidden="true" className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-24 rounded-xl border border-line bg-card" />
+          <div key={i} className="h-[132px] rounded-xl border border-line bg-card" />
         ))}
       </div>
     </div>

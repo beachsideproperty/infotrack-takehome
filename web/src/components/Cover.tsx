@@ -10,8 +10,10 @@ function colorFor(id: string): string {
 }
 
 const SIZES = {
-  hero: 'h-[162px] w-[108px] sm:h-[270px] sm:w-[180px]',
-  card: 'h-[66px] w-11',
+  // 2:3, like most covers. The hero cover is about as tall as the text beside it; a card's sits
+  // alongside its title and author line instead of looking like an icon.
+  hero: 'h-[180px] w-[120px] sm:h-[330px] sm:w-[220px]',
+  card: 'h-24 w-16',
   row: 'h-[72px] w-12',
 } as const
 
@@ -29,7 +31,10 @@ interface Props {
 export function Cover({ id, title, url, size }: Props) {
   const [failed, setFailed] = useState(false)
   const src = url && size !== 'hero' ? url.replace(/-L\.jpg$/, '-M.jpg') : url
-  const frame = `${SIZES[size]} flex-none overflow-hidden ${size === 'hero' ? 'rounded' : 'rounded-[3px]'}`
+  // A soft shadow so a pale cover doesn't blend into the card.
+  const frame = `${SIZES[size]} flex-none overflow-hidden ${
+    size === 'hero' ? 'rounded shadow-[0_2px_4px_rgb(42_36_32/0.12),0_8px_24px_rgb(42_36_32/0.12)]' : 'rounded-[3px] shadow-[0_1px_3px_rgb(42_36_32/0.18)]'
+  }`
 
   if (src && !failed) {
     return (
