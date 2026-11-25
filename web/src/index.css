@@ -45,3 +45,25 @@ body {
     outline-offset: 2px;
   }
 }
+
+/* "How it works" in the header highlights the section it jumps to. */
+@keyframes flash {
+  from {
+    background-color: var(--color-tint);
+    box-shadow: 0 0 0 14px var(--color-tint);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+.flash {
+  animation: flash 1.6s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash {
+    animation-duration: 0.01s;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+  }
+}

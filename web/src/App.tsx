@@ -46,8 +46,14 @@ export default function App() {
     // After the home layout renders, bring the section into view and move focus there.
     requestAnimationFrame(() => {
       const section = document.getElementById('how')
-      section?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      section?.focus({ preventScroll: true })
+      if (!section) return
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      section.focus({ preventScroll: true })
+      // On a tall screen the section is already in view and there's nothing to scroll, so briefly
+      // highlight it; otherwise the click looks like it did nothing. Re-adding restarts the animation.
+      section.classList.remove('flash')
+      void section.offsetWidth
+      section.classList.add('flash')
     })
   }
 

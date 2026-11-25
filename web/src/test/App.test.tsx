@@ -167,6 +167,22 @@ describe('App', () => {
     expect(screen.queryByText('Basic matching')).not.toBeInTheDocument()
   })
 
+  it('"How it works" goes home and highlights the section, even when there is nothing to scroll', async () => {
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    mockApi({ body: hobbit })
+    await searchFor('tolkien hobbit')
+    await screen.findByText('Best match')
+
+    await userEvent.click(screen.getByRole('link', { name: 'How it works' }))
+
+    const section = await screen.findByRole('region', { name: 'How it works' })
+    await waitFor(() => expect(section).toHaveClass('flash'))
+    expect(section).toHaveFocus()
+    expect(scroll).toHaveBeenCalled()
+    expect(screen.queryByText('Best match')).not.toBeInTheDocument()
+  })
+
   it('runs an example chip and focuses the search box on "/"', async () => {
     const sent = mockApi({ body: hobbit })
     const user = userEvent.setup()

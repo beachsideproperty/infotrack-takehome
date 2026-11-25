@@ -6,7 +6,7 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" aria-labelledby="how-title" tabIndex={-1} className="flex flex-col gap-4 border-t border-line pt-7">
+    <section id="how" aria-labelledby="how-title" tabIndex={-1} className="flex flex-col gap-4 rounded-sm border-t border-line pt-7">
       <h2 id="how-title" className="text-xs font-semibold tracking-[0.08em] text-muted uppercase">
         How it works
       </h2>
