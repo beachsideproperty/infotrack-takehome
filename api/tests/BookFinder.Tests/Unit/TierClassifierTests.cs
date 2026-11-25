@@ -111,6 +111,45 @@ public class TierClassifierTests
         Assert.Equal("J.R.R. Tolkien", ranked.Evidence.MatchedAuthor?.Name);
     }
 
+    private static RankedCandidate? FreeText(BookCandidate book, string text) =>
+        TierClassifier.Classify(book, [new QueryHypothesis(null, null, [], null, FreeText: text)]);
+
+    [Fact]
+    public void Fallback_free_text_matches_part_of_a_title_and_a_first_name()
+    {
+        var ranked = FreeText(Books.Book("Adventures of Huckleberry Finn", ["Mark Twain"]), "mark huckleberry")!;
+
+        Assert.Equal(MatchTier.C, ranked.Tier); // near title + author
+        Assert.Equal(TitleMatch.Near, ranked.Evidence.Title);
+        Assert.Equal("Mark Twain", ranked.Evidence.MatchedAuthor?.Name);
+    }
+
+    [Fact]
+    public void Fallback_a_first_name_alone_never_matches()
+    {
+        // "mark" is Mark Twain's first name, but nothing else in the text matches this title.
+        Assert.Null(FreeText(Books.Book("The Adventures of Tom Sawyer", ["Mark Twain"]), "mark huckleberry"));
+        Assert.Null(FreeText(Books.Book("Roughing It", ["Mark Twain"]), "mark"));
+    }
+
+    [Fact]
+    public void Fallback_free_text_series_words_match_each_book_as_near()
+    {
+        var ranked = FreeText(Books.Book("Harry Potter and the Chamber of Secrets", ["J. K. Rowling"]), "harry potter")!;
+
+        Assert.Equal(TitleMatch.Near, ranked.Evidence.Title);
+        Assert.Equal(MatchTier.E, ranked.Tier); // title only: no author in the text
+    }
+
+    [Theory]
+    [InlineData("huckleberry", "Adventures of Huckleberry Finn", true)]
+    [InlineData("hary poter", "Harry Potter and the Chamber of Secrets", true)] // typos
+    [InlineData("pizza recipe", "Perfect pizza recipes", true)]
+    [InlineData("huckleberry sawyer", "Adventures of Huckleberry Finn", false)] // every word must be there
+    [InlineData("the of", "The Lord of the Rings", false)] // minor words alone don't count
+    public void Has_all_words(string text, string title, bool expected) =>
+        Assert.Equal(expected, TitleMatcher.HasAllWords(text, title));
+
     [Fact]
     public void Adaptation_listing_the_author_second_is_demoted_when_the_original_is_present()
     {

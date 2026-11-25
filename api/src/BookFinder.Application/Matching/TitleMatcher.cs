@@ -64,6 +64,19 @@ public static class TitleMatcher
         return TitleMatch.Near;
     }
 
+    /// <summary>
+    /// Fallback parsing only: every meaningful word the reader typed is in the title, however much of the title is
+    /// left over ("huckleberry" in "Adventures of Huckleberry Finn"). Too loose for a title Gemini read, but the
+    /// fallback only has fragments, and the candidates already came from Open Library's relevance search.
+    /// </summary>
+    public static bool HasAllWords(string? text, string title, string? subtitle = null)
+    {
+        var words = Meaningful(TextNormalizer.NormalizeTitle(text).Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (words.Count == 0) return false;
+        var titleWords = TextNormalizer.NormalizeTitle($"{title} {subtitle}").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return words.All(w => titleWords.Any(t => WordsMatch(w, t)));
+    }
+
     /// <summary>Equal, or a likely typo of a word of 4+ letters.</summary>
     public static bool WordsMatch(string a, string b) =>
         a == b || (Math.Min(a.Length, b.Length) >= 4 && StringSimilarity.LevenshteinRatio(a, b) >= 0.75);

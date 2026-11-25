@@ -60,6 +60,28 @@
       "explanation": "Exact title, but Charles Dixon is listed first on this version; J.R.R. Tolkien is credited after them, so it ranks below the original."
     },
     {
+      "title": "The Hobbit & The Lord of the Rings [collection/set]",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1979,
+      "openLibraryId": "OL14926019W",
+      "url": "https://openlibrary.org/works/OL14926019W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/255844-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "near",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": true,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Collection or multi-book volume by J.R.R. Tolkien; listed below single works though the title overlaps."
+    },
+    {
       "title": "The Lord of the Rings",
       "authors": [
         "J.R.R. Tolkien"
@@ -102,28 +124,6 @@
         "keywordOnly": false
       },
       "explanation": "J.R.R. Tolkien is the primary author, but \"The Fellowship of the Ring\" isn't the title you typed."
-    },
-    {
-      "title": "The Two Towers",
-      "authors": [
-        "J.R.R. Tolkien"
-      ],
-      "contributors": [],
-      "firstPublishYear": 1954,
-      "openLibraryId": "OL27479W",
-      "url": "https://openlibrary.org/works/OL27479W",
-      "coverUrl": "https://covers.openlibrary.org/b/id/14627564-L.jpg",
-      "matchTier": "E",
-      "match": {
-        "title": "none",
-        "author": "primary",
-        "yearMatched": false,
-        "seriesMember": false,
-        "collection": false,
-        "derivative": false,
-        "keywordOnly": false
-      },
-      "explanation": "J.R.R. Tolkien is the primary author, but \"The Two Towers\" isn't the title you typed."
     }
   ],
   "hasBestMatch": true,

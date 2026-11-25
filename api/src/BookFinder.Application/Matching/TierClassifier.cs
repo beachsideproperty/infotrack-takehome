@@ -110,7 +110,9 @@ public static class TierClassifier
 
     /// <summary>
     /// Fallback parsing: we don't know which words are the author. If a candidate author's surname is in
-    /// the text, those words are the author and the rest is compared against the title.
+    /// the text, those words are the author and the rest is compared against the title. Titles count as near
+    /// when every remaining word is in them ("huckleberry"). A first name alone ("mark") counts as the author
+    /// only when the rest of the text matches that book's title, so a common first name can't match on its own.
     /// </summary>
     private static (TitleMatch, AuthorRole, AuthorRef?) MatchFreeText(BookCandidate candidate, string freeText)
     {
@@ -131,7 +133,21 @@ public static class TierClassifier
             }
         }
 
-        var title = tokens.Count > 0 ? TitleOf(candidate, string.Join(' ', tokens)) : TitleMatch.None;
-        return (title, role, matched);
+        if (matched is null && candidate.LeadAuthor is { } lead)
+        {
+            var givenNames = TextNormalizer.Tokens(lead.Name).SkipLast(1).Where(t => t.Length >= 3).ToHashSet();
+            var rest = tokens.Where(t => !givenNames.Contains(t)).ToList();
+            if (rest.Count > 0 && rest.Count < tokens.Count && FreeTextTitle(candidate, rest) != TitleMatch.None)
+                (role, matched, tokens) = (AuthorRole.Lead, lead, rest);
+        }
+
+        return (tokens.Count > 0 ? FreeTextTitle(candidate, tokens) : TitleMatch.None, role, matched);
+    }
+
+    private static TitleMatch FreeTextTitle(BookCandidate candidate, List<string> words)
+    {
+        var text = string.Join(' ', words);
+        var match = TitleOf(candidate, text);
+        return match == TitleMatch.None && TitleMatcher.HasAllWords(text, candidate.Title, candidate.Subtitle) ? TitleMatch.Near : match;
     }
 }

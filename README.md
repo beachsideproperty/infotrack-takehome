@@ -75,7 +75,7 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 171 tests, offline, ~1 s
+cd api && dotnet test        # 188 tests, offline, ~1 s
 cd web && npm test           # 43 tests (Vitest + Testing Library), API mocked
 cd web && npm run build      # type-check + production build
 ```
@@ -209,6 +209,8 @@ Within a tier: the year named in the query → the matched author's place on the
 
 **Normalizing:** Unicode NFKD, accents and punctuation stripped, lowercase, leading article dropped. Title variants split on `:`, `;`, `, or`, ` (`, ` - `, so "The Hobbit, or There and Back Again" matches "the hobbit". Author names match on surname plus compatible given names or initials ("J.R.R. Tolkien" = "John Ronald Reuel Tolkien"; "Charles Dickens" ≠ "Monica Dickens").
 
+**Without Gemini** the rule-based parser strips noise and sends the rest to Open Library as free text, and the classifier works out which words were the author: a surname in the text, or a first name when the other words match that book's title ("mark huckleberry" → Mark Twain). There, any title containing every typed word counts as near, because the reader only typed fragments and the candidates already come from Open Library's relevance search.
+
 **Open Library budget:** one `search.json` per hypothesis (max 3), `works/{id}.json` for the top 5 only, `authors/{id}.json` only when a name is missing. A process-wide token bucket keeps us at 3 requests/second with an identified User-Agent (1/s without), responses are cached by URL, each call times out at 6 s and is retried once. A new query costs about 6–8 Open Library calls and two Gemini calls, typically 3–6 s.
 
 **Caching:** results are cached by normalized query ("Tolkien Hobbit!" = "tolkien hobbit") for 6 hours, so a repeated search, like the example chips, never spends Gemini quota. A result that needed the rule-based parser or template explanations is kept for only 2 minutes, and Gemini's reading of the query is cached separately, so a better result replaces it once Gemini recovers. Everything is in memory, so a Render restart (the free tier sleeps when idle) starts cold.
@@ -229,6 +231,7 @@ Every case has a defined behaviour, and the query is never lost:
 | A book described but not named ("a whale and a lighthouse") | `noMatch` + keyword "closest guesses" | "No confident match yet" + guesses labelled "Keyword only" |
 | Not a book ("pizza recipe") | `noMatch`, no Open Library calls | "No confident match yet", honest empty state |
 | Gemini down, slow or rate-limited | Rule-based parser and/or template reasons; `aiIssue` says why, and the log line names each model's failure | Banner that says why ("Google's AI is busy right now… Try again in a minute", "Today's free AI quota is used up…"); note when reasons are templates |
+| Basic matching's known limits (only while Gemini is down) | "1984 by orwell" reads 1984 as a year → Orwell's works; "tale two cities" puts an obscure book literally titled *A tale two cities* first, Dickens second; "pizza recipe" shows pizza books (never as a best match); a described book ("a whale and a lighthouse") finds nothing | The banner explains results come from basic matching; everything is still a real Open Library record |
 | Open Library down or slow | One retry, then 502 | "Can't reach Open Library right now" + Try again (query kept) |
 | Open Library rate-limiting us | 503 + `Retry-After` | "Open Library is busy" + countdown |
 | Too many searches from one visitor | 429 + `Retry-After` | "Lots of searches at once" + countdown |
@@ -270,14 +273,14 @@ Every case has a defined behaviour, and the query is never lost:
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 171 tests offline in about a second; `cd web && npm test` runs 43 web tests with the API mocked. No test calls Gemini or the network.
+`cd api && dotnet test` runs 188 tests offline in about a second; `cd web && npm test` runs 43 web tests with the API mocked. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
 | Unit | Normalizer, title variants and near matches, author name matching, every tier A–E, adaptation demotion, collections, series, ranker order and determinism, best-match rule, fallback parser, template sentences |
 | Web (Vitest + Testing Library) | Every result mode (best match, ranked list, series, author only, keyword guesses), "Did you mean" re-search, inline validation without calling the API, server 400 inline, 429 countdown, 502 card with Try again re-running the same query, AI-unavailable banner, example chips, `/` shortcut, `?q=` links, a slow older answer never overwriting a newer one, label and "Searched for" wording, the loading-step timer |
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
-| Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
+| Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Every query also runs with Gemini "down" (rule-based parser): it still finds Hobbit, Huckleberry Finn, Twilight, Les Misérables, Pride and Prejudice ("austen bennet", via Open Library's full-text search), Dickens' works and the Harry Potter books. The known limits are pinned by tests too (see "Failures and unclear results") |
 | Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, `/health` status from the gate (ok, limited, unavailable, our own cap), cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
 | Contract | The API tests save a real response for each kind of result (best match, author only, series, keyword guesses, not a book, fallback), a validation error and `/health` to `contracts/*.json`, and fail if the output changes. A web test checks the same files against the TypeScript types: an unknown field, a missing required field or an unknown enum value fails. The checks are typed against the interfaces, so TypeScript makes them list every field. The two sides can't drift apart unnoticed |
 | API | `WebApplicationFactory` with fakes: response contract, `/health` AI status (no secrets), author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |

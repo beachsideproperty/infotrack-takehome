@@ -192,6 +192,98 @@ public class GoldenQueryTests
         Assert.Equal("OL24638A", outcome.Author?.Key);
     }
 
+    private static Task<SearchOutcome> Fallback(string query) => Create(FakeLlmParser.Unavailable).Service.SearchAsync(query, default);
+
+    [Fact]
+    public async Task Fallback_mark_huckleberry_matches_a_first_name_and_part_of_the_title()
+    {
+        var outcome = await Fallback("mark huckleberry");
+
+        AssertTop(outcome, "Adventures of Huckleberry Finn", "Mark Twain", MatchTier.C);
+        Assert.True(outcome.HasBestMatch);
+    }
+
+    [Fact]
+    public async Task Fallback_twilight_meyer()
+    {
+        var outcome = await Fallback("twilight meyer");
+
+        AssertTop(outcome, "Twilight", "Stephenie Meyer", MatchTier.A);
+        Assert.True(outcome.HasBestMatch);
+    }
+
+    [Fact]
+    public async Task Fallback_les_miserables_handles_the_accent()
+    {
+        var outcome = await Fallback("les miserables");
+
+        Assert.Equal("Victor Hugo", outcome.Results[0].Candidate.Book.LeadAuthor?.Name);
+        Assert.Equal("Les Misérables", outcome.Results[0].Candidate.Book.Title);
+    }
+
+    [Fact]
+    public async Task Fallback_austen_bennet_finds_pride_and_prejudice_through_open_library_full_text()
+    {
+        // No AI to turn the character into a title, but Open Library's full-text search knows Bennet.
+        var outcome = await Fallback("austen bennet");
+
+        Assert.Equal("Pride and Prejudice", outcome.Results[0].Candidate.Book.Title);
+        Assert.False(outcome.HasBestMatch); // only the author matched; honest about it
+    }
+
+    [Fact]
+    public async Task Fallback_harry_potter_lists_the_books_with_no_winner()
+    {
+        var outcome = await Fallback("harry potter");
+
+        Assert.False(outcome.HasBestMatch);
+        Assert.Contains(outcome.Results, r => r.Candidate.Book.Title == "Harry Potter and the Philosopher's Stone");
+        Assert.True(outcome.Results.Count >= 3);
+    }
+
+    // Known limits without the AI, pinned so a change in behaviour is noticed (README: failures and unclear results).
+
+    [Fact]
+    public async Task Fallback_limit_1984_is_read_as_a_year_so_orwell_becomes_author_only()
+    {
+        var outcome = await Fallback("1984 by orwell");
+
+        Assert.Equal(SearchMode.AuthorOnly, outcome.Mode);
+        Assert.Equal("George Orwell", outcome.Author?.Name);
+    }
+
+    [Fact]
+    public async Task Fallback_limit_tale_two_cities_puts_a_literal_title_match_first()
+    {
+        // "A tale two cities" (H. R. Jamison) is an exact title match for the words typed, so the hierarchy puts it
+        // first; Dickens is next. Gemini reads the real title, so this only happens when it's down.
+        var outcome = await Fallback("tale two cities");
+
+        Assert.Equal("H. R. Jamison", outcome.Results[0].Candidate.Book.LeadAuthor?.Name);
+        Assert.Equal("Charles Dickens", outcome.Results[1].Candidate.Book.LeadAuthor?.Name);
+        Assert.False(outcome.HasBestMatch);
+    }
+
+    [Fact]
+    public async Task Fallback_limit_pizza_recipe_shows_pizza_books_with_no_winner()
+    {
+        // Rules can't tell "not a book" from a topic; they show what Open Library has, never as a best match.
+        var outcome = await Fallback("pizza recipe");
+
+        Assert.False(outcome.HasBestMatch);
+        Assert.All(outcome.Results, r => Assert.Equal(MatchTier.E, r.Candidate.Tier));
+    }
+
+    [Fact]
+    public async Task Fallback_limit_a_described_book_finds_nothing_without_the_ai()
+    {
+        // Gemini turns this into keyword guesses; the rules pass all the words to Open Library, which matches nothing.
+        var outcome = await Fallback("blue cover book about a whale and a lighthouse");
+
+        Assert.Equal(SearchMode.NoMatch, outcome.Mode);
+        Assert.Empty(outcome.Results);
+    }
+
     [Fact]
     public async Task Fallback_typos_still_find_the_book()
     {
