@@ -284,20 +284,20 @@ Every case has a defined behaviour, and the query is never lost:
   - *Never cause a 429.* A process-wide gate caps each model at 14 requests/minute. At the cap we go straight to the other model or the deterministic fallback without calling Google.
   - *Cool down instead of waiting.* After a 429 the model is skipped for Google's `retryDelay` (until midnight Pacific for a daily quota); after a 503, for 20 s; after a timeout, for 10 s. Skipping costs no time, so a degraded search takes about 3 s instead of 20.
   - *Time budgets from measured latency.* Successful answers took 0.6–5.2 s. Parsing gets 9 s in total, of which the first model gets 5.5 s; explanations get 6 s, of which the first model gets 4 s. If parsing had to fall back, the explanation call is skipped.
-  - *Readable failures.* Every attempt logs the operation, model, latency and Google's status, message, quota id and retry delay (never the key or the prompt).
+  - *Readable failures.* Every attempt logs the operation, model, latency and Google's status, message, quota id and retry delay (never the key or the prompt). Each failure is classified (overloaded, timed out, rate limited, daily quota), so the response's `aiIssue`, the banner and `/health` can say whether trying again will help.
 - **Publication years are Open Library's.** `first_publish_year` is noisy (*A Tale of Two Cities* shows 1800; it was 1859), and the work records are worse. We report Open Library's value as is and label it as theirs in the UI, rather than "correcting" it with the LLM, which would break the rule that every fact comes from Open Library.
 - **Per-client rate limit.** Each client IP gets 10 searches a minute (configurable); beyond that the API returns a 429 ProblemDetails, "Lots of searches at once", with `Retry-After`. It keeps one visitor from spending the shared Gemini and Open Library quotas. The client IP comes from `X-Forwarded-For`, since Render sits behind a proxy.
 - **No database.** Open Library responses are cached in memory per instance (6 hours).
 
 ## Features
 
-- Search UI built from the designs: first visit with example chips and how it works, staged loading, best match, ranked lists, author page, no-match with guesses and "Did you mean", AI-unavailable banner, error cards; desktop and mobile; keyboard (`/` focuses the search box, Enter searches) and screen-reader announcements; shareable `?q=` links.
+- Search UI built from the designs: first visit with example chips and how it works, staged loading, best match, ranked lists, author page, no-match with guesses and "Did you mean", AI-unavailable banner that says why, a header note when every AI model is resting, error cards; desktop and mobile; keyboard (`/` focuses the search box, Enter searches) and screen-reader announcements; shareable `?q=` links.
 - One input for any mix of title, author, character, year and noise, with typo and diacritics tolerance.
 - Gemini hypotheses (up to 3), including titles from character hints ("austen bennet" → *Pride and Prejudice*) and published title forms ("1984" → *Nineteen Eighty-Four*).
 - The brief's A–E matching hierarchy with primary-author resolution from work records, adaptation detection, duplicate-work collapsing, series and box-set handling.
 - Author-only queries return the author's most-read works.
 - A grounded one-sentence explanation per result (Gemini, or deterministic templates).
-- Graceful degradation: Gemini down → rule-based parser + templates; Open Library slow → one retry, then a clear 502.
+- Graceful degradation: Gemini down → rule-based parser + templates, with the reason shown; Open Library slow → one retry, then a clear 502.
 
 ## Testing strategy
 
@@ -305,8 +305,8 @@ Every case has a defined behaviour, and the query is never lost:
 
 | Layer | What's covered |
 |---|---|
-| Unit | Normalizer, title variants and near matches, author name matching, every tier A–E, adaptation demotion, collections, series, ranker order and determinism, best-match rule, fallback parser, template sentences |
-| Web (Vitest + Testing Library) | Every result mode (best match, ranked list, series, author only, keyword guesses), "Did you mean" re-search, inline validation without calling the API, server 400 inline, 429 countdown, 502 card with Try again re-running the same query, AI-unavailable banner, example chips, `/` shortcut, `?q=` links, a slow older answer never overwriting a newer one, label and "Searched for" wording, the loading-step timer |
+| Unit | Normalizer, title variants and near matches, author name matching, every tier A–E, adaptation demotion, collections, series, ranker order and determinism, best-match rule, fallback parser and its free-text matching (partial titles, first names), years the title spells out, template sentences |
+| Web (Vitest + Testing Library) | Every result mode (best match, ranked list, series, author only, keyword guesses), "Did you mean" re-search, inline validation without calling the API, server 400 inline, 429 countdown, 502 card with Try again re-running the same query, AI-unavailable banner, example chips, `/` shortcut, `?q=` links, a slow older answer never overwriting a newer one, label and "Searched for" wording, the loading-step timer, the banner naming why the AI was unavailable, the header note only when every model is resting |
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Every query also runs with Gemini "down" (rule-based parser): it still finds Hobbit, Huckleberry Finn, Twilight, Les Misérables, Pride and Prejudice ("austen bennet", via Open Library's full-text search), Dickens' works and the Harry Potter books. The known limits are pinned by tests too (see "Failures and unclear results") |
 | Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, `/health` status from the gate (ok, limited, unavailable, our own cap), cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
