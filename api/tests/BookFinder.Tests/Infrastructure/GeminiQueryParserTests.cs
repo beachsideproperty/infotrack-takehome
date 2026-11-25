@@ -28,15 +28,6 @@ public class GeminiQueryParserTests
     public void A_year_next_to_an_unrelated_title_is_kept() =>
         Assert.Equal(1949, GeminiQueryParser.Sanitize("orwell 1949", [new Hyp("Nineteen Eighty-Four", "George Orwell", [], 1949)])[0].Year);
 
-    [Theory]
-    [InlineData(1984, "nineteen eighty four")]
-    [InlineData(1900, "nineteen hundred")]
-    [InlineData(1905, "nineteen oh five")]
-    [InlineData(2001, "two thousand one")]
-    [InlineData(2001, "two thousand and one")]
-    [InlineData(2000, "two thousand")]
-    public void Years_in_words(int year, string words) => Assert.Contains(words, GeminiQueryParser.YearInWords(year));
-
     [Fact]
     public void Trims_drops_empty_hypotheses_and_caps_at_three()
     {

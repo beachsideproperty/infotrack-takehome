@@ -110,6 +110,18 @@ public class GoldenQueryTests
     }
 
     [Fact]
+    public async Task Nineteen_eighty_four_when_gemini_reads_the_title_as_digits()
+    {
+        // Gemini sometimes returns the title "1984". Open Library's "1984" title search doesn't include Orwell's
+        // main work, so the spelled-out title is searched too, and the sparse "1984" record collapses into it.
+        var outcome = await Search("1984 by orwell", H.Hyp("1984", "George Orwell"));
+
+        AssertTop(outcome, "Nineteen Eighty-Four", "George Orwell", MatchTier.A);
+        Assert.Equal("OL1168083W", outcome.Results[0].Candidate.Book.WorkKey.Split('/')[^1]);
+        Assert.True(outcome.HasBestMatch);
+    }
+
+    [Fact]
     public async Task Hary_poter_stone()
     {
         var outcome = await Search("hary poter stone",

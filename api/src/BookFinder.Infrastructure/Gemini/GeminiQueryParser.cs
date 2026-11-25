@@ -93,30 +93,7 @@ public sealed class GeminiQueryParser(GeminiClient gemini, IOptions<GeminiOption
         if (h.Title is null) return h.Year;
         if (h.Title.Contains(h.Year.Value.ToString(), StringComparison.Ordinal)) return null;
         var title = " " + TextNormalizer.Normalize(h.Title) + " ";
-        return YearInWords(h.Year.Value).Any(words => title.Contains($" {words} ", StringComparison.Ordinal)) ? null : h.Year;
-    }
-
-    private static readonly string[] Ones =
-        ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
-         "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
-
-    private static readonly string[] Tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-
-    private static string UnderHundred(int n) =>
-        n < 20 ? Ones[n] : Tens[n / 10] + (n % 10 > 0 ? " " + Ones[n % 10] : "");
-
-    /// <summary>How a year can be spelled in a title, normalized: 1984 → "nineteen eighty four"; 2001 → "two thousand one", "two thousand and one".</summary>
-    public static IEnumerable<string> YearInWords(int year)
-    {
-        var (century, rest) = (year / 100, year % 100);
-        if (century is >= 11 and <= 19)
-            yield return UnderHundred(century) + " " + (rest == 0 ? "hundred" : rest < 10 ? "oh " + Ones[rest] : UnderHundred(rest));
-        if (year % 1000 < 100)
-        {
-            var thousands = Ones[year / 1000] + " thousand";
-            yield return rest == 0 ? thousands : $"{thousands} {UnderHundred(rest)}";
-            if (rest > 0) yield return $"{thousands} and {UnderHundred(rest)}";
-        }
+        return NumberWords.YearInWords(h.Year.Value).Any(words => title.Contains($" {words} ", StringComparison.Ordinal)) ? null : h.Year;
     }
 
     private static string? Clean(string? s, int maxLength)

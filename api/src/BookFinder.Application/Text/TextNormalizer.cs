@@ -30,10 +30,13 @@ public static class TextNormalizer
         return CollapseSpaces(sb.ToString());
     }
 
-    /// <summary>Normalize, then drop a leading article: "The Hobbit" → "hobbit".</summary>
+    /// <summary>
+    /// Normalize, spell out numbers, then drop a leading article: "The Hobbit" → "hobbit";
+    /// "1984" and "Nineteen Eighty-Four" → "nineteen eighty four", so they compare as the same title.
+    /// </summary>
     public static string NormalizeTitle(string? title)
     {
-        var normalized = Normalize(title);
+        var normalized = NumberWords.SpellAll(Normalize(title));
         foreach (var article in LeadingArticles)
         {
             if (normalized.StartsWith(article, StringComparison.Ordinal) && normalized.Length > article.Length)

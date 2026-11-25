@@ -53,6 +53,8 @@ docker compose up --build
 
 Web: http://localhost:5173 · API: http://localhost:8080/health
 
+The first start installs the website's packages inside the container, so give it a minute: the page is ready once the log shows `VITE … ready`. Before that the browser shows a connection reset.
+
 ### Without Docker
 
 ```bash
@@ -106,9 +108,9 @@ query ─▶ validate (1–300 chars)
 
 Within a tier: the year named in the query → the matched author's place on the work record → exact over near title → likelier hypothesis → Open Library reading-log count → edition count → work key. The same input always produces the same order (tested by shuffling). The best-match card appears only when the top result is A–C and clearly beats the runner-up; never for series, author-only or weak matches.
 
-**Normalizing.** Accents and punctuation stripped, lowercase, leading article dropped; title variants split on subtitles and alternatives ("The Hobbit, or There and Back Again" matches "the hobbit"). Author names match on surname plus compatible given names or initials ("J.R.R. Tolkien" = "John Ronald Reuel Tolkien"; "Charles Dickens" ≠ "Monica Dickens"). **Without Gemini**, the classifier works out which typed words were the author (a surname, or a first name when the other words match that book's title: "mark huckleberry" → Mark Twain), and a title containing every typed word counts as near.
+**Normalizing.** Accents and punctuation stripped, lowercase, numbers spelled out ("1984" = "Nineteen Eighty-Four"), leading article dropped; title variants split on subtitles and alternatives ("The Hobbit, or There and Back Again" matches "the hobbit"). Author names match on surname plus compatible given names or initials ("J.R.R. Tolkien" = "John Ronald Reuel Tolkien"; "Charles Dickens" ≠ "Monica Dickens"). **Without Gemini**, the classifier works out which typed words were the author (a surname, or a first name when the other words match that book's title: "mark huckleberry" → Mark Twain), and a title containing every typed word counts as near.
 
-**Open Library and caching.** One `search.json` per hypothesis (max 3), work records for the top 5 only. A token bucket keeps us at 3 requests/second with an identified User-Agent, responses are cached by URL, and each call times out at 6 s with one retry. Results are cached by normalized query for 6 hours, so repeats (like the example chips) cost no Gemini quota; a degraded result is kept for only 2 minutes so a better one replaces it. A new query takes about 6–8 Open Library calls, two Gemini calls and 3–6 s.
+**Open Library and caching.** One `search.json` per hypothesis (max 3; a title with a number is also searched spelled out, because Open Library's "1984" search misses Orwell's main record), work records for the top 5 only. A token bucket keeps us at 3 requests/second with an identified User-Agent, responses are cached by URL, and each call times out at 6 s with one retry. Results are cached by normalized query for 6 hours, so repeats (like the example chips) cost no Gemini quota; a degraded result is kept for only 2 minutes so a better one replaces it. A new query takes about 6–8 Open Library calls, two Gemini calls and 3–6 s.
 
 **Web app.** One page, a `useReducer` state machine (`idle → loading → done | error`). A new search aborts the one in flight, so a slow answer can't overwrite a newer one. The three loading steps are paced by a timer over the single request. Badges come from the API's per-result `match` details, never guessed from the tier letter. Keyboard and screen-reader friendly, reduced motion respected.
 

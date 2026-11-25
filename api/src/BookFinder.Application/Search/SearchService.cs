@@ -153,13 +153,31 @@ public sealed class SearchService(
         if (h.IsFreeText) return await catalog.SearchAsync(new CatalogQuery(Text: h.FreeText, Limit: SearchLimit), cancellationToken);
         if (!h.HasTitle) return await catalog.SearchAsync(new CatalogQuery(Author: h.Author, Sort: "readinglog", Limit: SearchLimit), cancellationToken);
 
-        var docs = await catalog.SearchAsync(new CatalogQuery(Title: h.Title, Author: h.Author, Limit: SearchLimit), cancellationToken);
+        var docs = await SearchTitleAsync(h.Title!, h.Author, cancellationToken);
         if (docs.Count == 0 && h.HasAuthor)
         {
             // Field search is strict about spelling; the general index is fuzzier.
             docs = await catalog.SearchAsync(new CatalogQuery(Text: $"{h.Title} {h.Author}", Limit: SearchLimit), cancellationToken);
         }
         return docs;
+    }
+
+    /// <summary>
+    /// Title search. A title with a number in it is also searched spelled out: Open Library's "1984" search
+    /// never returns Orwell's main work record, which is titled "Nineteen Eighty-Four". Both are ranked
+    /// together and duplicates collapse (see <see cref="CollapseDuplicateWorks"/>).
+    /// </summary>
+    private async Task<IReadOnlyList<CatalogDoc>> SearchTitleAsync(string title, string? author, CancellationToken cancellationToken)
+    {
+        var normalized = TextNormalizer.Normalize(title);
+        if (!NumberWords.HasSpellableNumber(normalized))
+            return await catalog.SearchAsync(new CatalogQuery(Title: title, Author: author, Limit: SearchLimit), cancellationToken);
+
+        var both = await Task.WhenAll(
+            catalog.SearchAsync(new CatalogQuery(Title: title, Author: author, Limit: SearchLimit), cancellationToken),
+            catalog.SearchAsync(new CatalogQuery(Title: NumberWords.SpellAll(normalized), Author: author, Limit: SearchLimit), cancellationToken));
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        return both.SelectMany(docs => docs).Where(d => seen.Add(d.WorkKey)).ToList();
     }
 
     /// <summary>
