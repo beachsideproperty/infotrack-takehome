@@ -120,7 +120,8 @@ api/                         .NET 10 solution (BookFinder.sln) + Dockerfile
   src/BookFinder.Application     SearchService, matching hierarchy, ranker, fallback parser, templates (pure code)
   src/BookFinder.Domain          Records: hypotheses, candidates, tiers, outcomes
   src/BookFinder.Infrastructure  Open Library client (rate limit, cache, retry), Gemini client (model fallback)
-  tests/BookFinder.Tests         Unit, golden-query, client and API tests + recorded Open Library JSON
+  tests/BookFinder.Tests         Unit, golden-query, client, API and contract tests + recorded Open Library JSON
+  tools/BookFinder.LlmEval       Measures Gemini's reading of the golden queries (run by hand; calls Gemini)
 web/                         Vite + React + TypeScript + Tailwind v4 (+ Motion, Vitest)
   src/lib                      API client and types, search state, labels, validation
   src/components               One component per screen element from the designs
@@ -286,6 +287,26 @@ Every case has a defined behaviour, and the query is never lost:
 | Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, `/health` status from the gate (ok, limited, unavailable, our own cap), cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
 | Contract | The API tests save a real response for each kind of result (best match, author only, series, keyword guesses, not a book, fallback), a validation error and `/health` to `contracts/*.json`, and fail if the output changes. A web test checks the same files against the TypeScript types: an unknown field, a missing required field or an unknown enum value fails. The checks are typed against the interfaces, so TypeScript makes them list every field. The two sides can't drift apart unnoticed |
 | API | `WebApplicationFactory` with fakes: response contract, `/health` AI status (no secrets), author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
+
+### Evaluating Gemini's reading
+
+The tests fake Gemini, so they pin what *code* decides. How well Gemini *reads* queries is measured separately by `api/tools/BookFinder.LlmEval`: each golden query, plus a not-a-book query and a prompt injection, goes through the production prompt, schema and sanitizing on each model, and is scored against what the reader meant. It calls Gemini (~26 calls, paced for the free tier), so it's run by hand, not in CI:
+
+```bash
+GEMINI_API_KEY=... dotnet run --project api/tools/BookFinder.LlmEval   # writes api/tools/BookFinder.LlmEval/RESULTS.md
+```
+
+Results from Nov 25, 2026 ([full table](api/tools/BookFinder.LlmEval/RESULTS.md)):
+
+| Model | Right (of answered) | Answered first try | Median |
+|---|---|---|---|
+| `gemini-3.5-flash-lite` (parsing tries it first) | 12/13 | 10/13 | 0.8 s |
+| `gemini-3.1-flash-lite` | 7/10 | 6/13 (3 never answered) | 1.5 s |
+
+What it changed:
+- **Found a bug:** both models return 1984 as a year alongside the title *Nineteen Eighty-Four*. The sanitizer now drops a year the title spells out (the one ❌ in the 3.5 column predates the fix).
+- **Confirmed the model order:** 3.5 is more accurate and faster. 3.1 obeyed the prompt injection (a hypothesis titled "Hacked") and guessed *Moby-Dick* for the vague whale query instead of returning keywords. Both are contained by design: every result must be a real Open Library record, and 3.1 is only the fallback for parsing.
+- **Availability is the real risk, not accuracy:** a quarter to half of the calls needed a retry because Google was overloaded, which is why the fallback path, cooldowns and `aiIssue` matter.
 
 ## Future improvements
 
