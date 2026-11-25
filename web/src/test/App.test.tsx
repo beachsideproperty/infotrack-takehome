@@ -137,8 +137,7 @@ describe('App', () => {
     })
     await searchFor('tolkien hobbit')
 
-    expect(await screen.findByText('AI is unavailable, so this used basic matching.')).toBeInTheDocument()
-    expect(screen.getByText(/come from a template/)).toBeInTheDocument()
+    expect(await screen.findByText(/Something unexpected went wrong with the AI/)).toBeInTheDocument()
   })
 
   it('says why the AI was unavailable when the API knows', async () => {
@@ -148,6 +147,15 @@ describe('App', () => {
     await searchFor('tolkien hobbit')
 
     expect(await screen.findByText(/Today’s free AI quota is used up/)).toBeInTheDocument()
+  })
+
+  it('says when Google refused the request rather than the search failing', async () => {
+    mockApi({
+      body: { ...hobbit, parser: 'fallback', explanations: 'template', aiIssue: 'rejected', interpretedAs: [{ text: 'tolkien hobbit', keywords: [], isSeries: false }] },
+    })
+    await searchFor('tolkien hobbit')
+
+    expect(await screen.findByText(/a setup problem on our side rather than your search/)).toBeInTheDocument()
   })
 
   it('warns in the header when every Gemini model is resting, but not when one still works', async () => {

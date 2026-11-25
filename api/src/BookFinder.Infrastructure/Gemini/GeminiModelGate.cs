@@ -22,6 +22,9 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
         TimedOut,
         RateLimited,
         DailyQuota,
+        Unreachable,
+        Rejected,
+        BadAnswer,
         Other,
     }
 
@@ -112,6 +115,9 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
         Failure.DailyQuota => "the daily quota ran out",
         Failure.Overloaded => "an overload",
         Failure.TimedOut => "a timeout",
+        Failure.Unreachable => "Google being unreachable",
+        Failure.Rejected => "a rejected request",
+        Failure.BadAnswer => "an unusable answer",
         _ => "an error",
     };
 

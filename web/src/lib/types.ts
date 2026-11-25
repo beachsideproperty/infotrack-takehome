@@ -49,5 +49,14 @@ export interface SearchResponse {
   aiIssue?: AiIssue
 }
 
-export type AiIssue = 'notConfigured' | 'overloaded' | 'timedOut' | 'rateLimited' | 'dailyQuota' | 'error'
+export type AiIssue =
+  | 'notConfigured'
+  | 'overloaded'
+  | 'timedOut'
+  | 'rateLimited'
+  | 'dailyQuota'
+  | 'unreachable'
+  | 'rejected'
+  | 'badAnswer'
+  | 'error'
 

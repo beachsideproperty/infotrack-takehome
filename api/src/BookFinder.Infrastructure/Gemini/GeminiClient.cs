@@ -83,9 +83,11 @@ public sealed class GeminiClient(
             }
             catch (Exception ex) when (ex is HttpRequestException or JsonException)
             {
-                gate.ReportFailure(model, GeminiModelGate.Failure.Other);
-                reasons.Add(GeminiModelGate.Failure.Other);
-                failures.Add($"{model}: error: {ex.GetType().Name}: {ex.Message}");
+                // No response at all, or a response that isn't the JSON we asked for.
+                var failure = ex is HttpRequestException ? GeminiModelGate.Failure.Unreachable : GeminiModelGate.Failure.BadAnswer;
+                gate.ReportFailure(model, failure);
+                reasons.Add(failure);
+                failures.Add($"{model}: {Label(failure)}: {ex.GetType().Name}: {ex.Message}");
             }
 
             logger.LogWarning("Gemini {Operation} {Model} failed after {Ms} ms: {Reason}",
@@ -106,7 +108,8 @@ public sealed class GeminiClient(
         GeminiModelGate.Failure[] soonestFirst =
         [
             GeminiModelGate.Failure.Overloaded, GeminiModelGate.Failure.TimedOut, GeminiModelGate.Failure.RateLimited,
-            GeminiModelGate.Failure.Other, GeminiModelGate.Failure.DailyQuota,
+            GeminiModelGate.Failure.Unreachable, GeminiModelGate.Failure.BadAnswer, GeminiModelGate.Failure.Other,
+            GeminiModelGate.Failure.Rejected, GeminiModelGate.Failure.DailyQuota,
         ];
         var pick = soonestFirst.FirstOrDefault(failures.Contains, GeminiModelGate.Failure.Other);
         return pick switch
@@ -115,6 +118,9 @@ public sealed class GeminiClient(
             GeminiModelGate.Failure.TimedOut => LlmFailureReason.TimedOut,
             GeminiModelGate.Failure.RateLimited => LlmFailureReason.RateLimited,
             GeminiModelGate.Failure.DailyQuota => LlmFailureReason.DailyQuota,
+            GeminiModelGate.Failure.Unreachable => LlmFailureReason.Unreachable,
+            GeminiModelGate.Failure.Rejected => LlmFailureReason.Rejected,
+            GeminiModelGate.Failure.BadAnswer => LlmFailureReason.BadAnswer,
             _ => LlmFailureReason.Error,
         };
     }
@@ -129,6 +135,9 @@ public sealed class GeminiClient(
         LlmFailureReason.TimedOut => "timed-out",
         LlmFailureReason.RateLimited => "rate-limited",
         LlmFailureReason.DailyQuota => "daily-quota",
+        LlmFailureReason.Unreachable => "unreachable",
+        LlmFailureReason.Rejected => "rejected",
+        LlmFailureReason.BadAnswer => "bad-answer",
         _ => "error",
     };
 
@@ -195,7 +204,9 @@ public sealed class GeminiClient(
             var failure = response.StatusCode switch
             {
                 HttpStatusCode.TooManyRequests => GeminiModelGate.Failure.RateLimited,
-                HttpStatusCode.ServiceUnavailable or HttpStatusCode.InternalServerError or HttpStatusCode.GatewayTimeout => GeminiModelGate.Failure.Overloaded,
+                HttpStatusCode.ServiceUnavailable or HttpStatusCode.InternalServerError or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout => GeminiModelGate.Failure.Overloaded,
+                // 400 bad key or request, 401/403 permission, 404 retired model: retrying won't help.
+                >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError => GeminiModelGate.Failure.Rejected,
                 _ => GeminiModelGate.Failure.Other,
             };
             throw new GeminiCallException(failure, error);
@@ -203,11 +214,11 @@ public sealed class GeminiClient(
 
         using var doc = JsonDocument.Parse(payload);
         if (!doc.RootElement.TryGetProperty("candidates", out var candidates) || candidates.GetArrayLength() == 0)
-            throw new GeminiCallException(GeminiModelGate.Failure.Other, new GeminiError(200, null, "no candidates (blocked?)", null, null));
+            throw new GeminiCallException(GeminiModelGate.Failure.BadAnswer, new GeminiError(200, null, "no candidates (blocked?)", null, null));
 
         var candidate = candidates[0];
         if (candidate.TryGetProperty("finishReason", out var finish) && finish.GetString() is { } reason && reason != "STOP")
-            throw new GeminiCallException(GeminiModelGate.Failure.Other, new GeminiError(200, null, $"finish reason {reason}", null, null));
+            throw new GeminiCallException(GeminiModelGate.Failure.BadAnswer, new GeminiError(200, null, $"finish reason {reason}", null, null));
 
         // Join the answer parts, skipping any "thought" parts from thinking models.
         var text = string.Concat(candidate.GetProperty("content").GetProperty("parts").EnumerateArray()
@@ -215,7 +226,7 @@ public sealed class GeminiClient(
             .Select(p => p.TryGetProperty("text", out var t) ? t.GetString() : null));
 
         return string.IsNullOrWhiteSpace(text)
-            ? throw new GeminiCallException(GeminiModelGate.Failure.Other, new GeminiError(200, null, "empty response", null, null))
+            ? throw new GeminiCallException(GeminiModelGate.Failure.BadAnswer, new GeminiError(200, null, "empty response", null, null))
             : text;
     }
 

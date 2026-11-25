@@ -38,7 +38,7 @@ Real responses for every kind of result are saved in [`contracts/`](../contracts
 ```
 
 - `match` says what matched (`title`: exact | near | none; `author`: primary | contributor | none; plus flags), so the UI labels results precisely.
-- `aiIssue` appears only when Gemini wasn't used, for the parse or else the explanations: `overloaded` (Google's 503), `timedOut`, `rateLimited` (Google's per-minute limit or our own cap), `dailyQuota` (until midnight Pacific), `notConfigured` or `error`. When the two models failed differently it reports the one that clears soonest.
+- `aiIssue` appears only when Gemini wasn't used, for the parse or else the explanations: `overloaded` (Google's 503), `timedOut`, `rateLimited` (Google's per-minute limit or our own cap), `dailyQuota` (until midnight Pacific), `unreachable` (no connection to Google), `rejected` (Google refused the request: a bad key or retired model, so a setup problem), `badAnswer` (blocked, cut off or not valid JSON), `notConfigured`, or `error` when nothing more specific is known. When the two models failed differently it reports the one that clears soonest.
 - `noMatch` can carry results: keyword "closest guesses" when the query described a book without naming one. `didYouMean: { title, author }` appears only on `noMatch`; `author: { name, openLibraryId, url }` only on `authorOnly`.
 - Fields with no value are left out (a missing year is never `0`).
 - Errors are RFC 7807 ProblemDetails. Validation errors carry the message to show under the input in `detail`: "Type a title, an author or a few words you remember." / "That's a lot to go on. Try the few words you're surest about." (over 300 characters).

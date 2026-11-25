@@ -6,8 +6,11 @@ const degradedHeadline: Record<AiIssue, string> = {
   timedOut: 'Google’s AI was too slow to answer, so this used basic matching. Try again in a minute.',
   rateLimited: 'The AI’s per-minute limit was reached, so this used basic matching. Try again in a minute.',
   dailyQuota: 'Today’s free AI quota is used up, so this used basic matching until it resets.',
-  notConfigured: 'AI isn’t set up on this server, so this used basic matching.',
-  error: 'AI is unavailable, so this used basic matching.',
+  notConfigured: 'AI isn’t set up on this server (no Gemini key), so this used basic matching.',
+  unreachable: 'Couldn’t reach Google’s AI, so this used basic matching. Try again in a minute.',
+  rejected: 'Google’s AI turned down the request, a setup problem on our side rather than your search, so this used basic matching.',
+  badAnswer: 'Google’s AI sent back an answer we couldn’t use, so this used basic matching. Trying again may help.',
+  error: 'Something unexpected went wrong with the AI, so this used basic matching. Try again in a minute.',
 }
 
 /** Shown when the rule-based parser handled the query because Gemini was unavailable. */
@@ -24,14 +27,5 @@ export function DegradedBanner({ issue }: { issue?: AiIssue }) {
         reasons are shorter. Ambiguous searches may miss.
       </p>
     </div>
-  )
-}
-
-/** Shown when the "why" lines came from templates rather than Gemini. */
-export function TemplateNote() {
-  return (
-    <p className="text-[13px] text-muted">
-      These reasons come from a template filled with the same fetched fields, so they stay accurate, just plainer.
-    </p>
   )
 }

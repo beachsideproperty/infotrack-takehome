@@ -6,7 +6,7 @@ import { Header } from './components/Header'
 import { HowItWorks } from './components/HowItWorks'
 import { LoadingView } from './components/LoadingView'
 import { NoMatchView } from './components/NoMatchView'
-import { DegradedBanner, TemplateNote } from './components/Notices'
+import { DegradedBanner } from './components/Notices'
 import { ResultsView } from './components/ResultsView'
 import { SearchForm } from './components/SearchForm'
 import { searchedFor } from './lib/labels'
@@ -123,7 +123,6 @@ function Results({ response, onSearch }: { response: SearchResponse; onSearch: (
       {response.mode === 'authorOnly' && <AuthorOnlyView response={response} />}
       {response.mode === 'noMatch' && <NoMatchView response={response} onSearch={onSearch} />}
       {response.mode === 'match' && <ResultsView response={response} />}
-      {response.results.length > 0 && response.explanations === 'template' && <TemplateNote />}
     </>
   )
 }

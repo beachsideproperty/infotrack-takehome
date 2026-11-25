@@ -231,12 +231,53 @@ public class GeminiClientTests
     }
 
     [Fact]
-    public async Task Malformed_json_from_the_model_is_LlmUnavailable()
+    public async Task Malformed_json_from_the_model_is_a_bad_answer()
     {
         var handler = new StubHandler((_, _) => Task.FromResult(Candidate("not json")));
 
-        await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+        Assert.Equal(LlmFailureReason.BadAnswer, ex.Reason);
+        Assert.StartsWith("bad-answer", ex.Message);
     }
+
+    [Fact]
+    public async Task A_blocked_or_cut_off_answer_is_a_bad_answer()
+    {
+        var handler = new StubHandler((_, _) => Task.FromResult(StubHandler.Json(
+            """{"candidates":[{"finishReason":"SAFETY","content":{"parts":[]}}]}""")));
+
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+        Assert.Equal(LlmFailureReason.BadAnswer, ex.Reason);
+        Assert.Contains("finish reason SAFETY", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, "INVALID_ARGUMENT")]   // e.g. "API key not valid"
+    [InlineData(HttpStatusCode.Forbidden, "PERMISSION_DENIED")]
+    [InlineData(HttpStatusCode.NotFound, "NOT_FOUND")]            // a retired model name
+    public async Task A_refused_request_is_rejected(HttpStatusCode status, string googleStatus)
+    {
+        var handler = new StubHandler((_, _) => Task.FromResult(StubHandler.Json(
+            $$$"""{"error":{"code":{{{(int)status}}},"status":"{{{googleStatus}}}","message":"no"}}""", status)));
+
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+        Assert.Equal(LlmFailureReason.Rejected, ex.Reason);
+        Assert.Contains($"primary: rejected: HTTP {(int)status}, {googleStatus}", ex.Message);
+    }
+
+    [Fact]
+    public async Task No_connection_to_google_is_unreachable()
+    {
+        var handler = new StubHandler((_, _) => throw new HttpRequestException("Name or service not known"));
+
+        var ex = await Assert.ThrowsAsync<LlmUnavailableException>(() => Generate(Create(handler).Client));
+        Assert.Equal(LlmFailureReason.Unreachable, ex.Reason);
+        Assert.Contains("Name or service not known", ex.Message);
+    }
+
+    [Fact]
+    public void A_refused_request_is_reported_last_before_the_daily_quota_because_retrying_soon_wont_fix_it() =>
+        Assert.Equal(LlmFailureReason.BadAnswer, GeminiClient.Overall([GeminiModelGate.Failure.Rejected, GeminiModelGate.Failure.BadAnswer]));
 
     [Fact]
     public async Task No_api_key_fails_fast_without_calling_out()

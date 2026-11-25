@@ -126,7 +126,7 @@ Every case has a defined behaviour, and the query is never lost:
 | Author only ("dickens") | "Top works by Charles Dickens" + link to all their works on Open Library |
 | Described but not named ("a whale and a lighthouse") | "No confident match yet" + keyword guesses labelled "Keyword only" |
 | Not a book ("pizza recipe") | "No confident match yet", no Open Library calls |
-| Gemini down, slow or out of quota | Basic matching, with a banner that says why and whether retrying helps ("Google's AI is busy right now… Try again in a minute", "Today's free AI quota is used up…"). The API reports it as `aiIssue`; `/health` shows each model's state, and the header warns when every model is resting |
+| Gemini down, slow or out of quota | Basic matching, with a banner that says why and whether retrying helps ("Google's AI is busy right now… Try again in a minute", "Today's free AI quota is used up…"; a refused request or an unusable answer is named too). The API reports it as `aiIssue`; `/health` shows each model's state, and the header warns when every model is resting |
 | Basic matching's known limits | "1984 by orwell" reads 1984 as a year (Orwell's works); "tale two cities" puts an obscure book literally titled *A tale two cities* above Dickens; "pizza recipe" shows pizza books (never as a best match); a described book finds nothing. All pinned by tests |
 | Open Library down or slow | One retry, then "Can't reach Open Library right now" + Try again (502) |
 | Open Library rate-limiting us | "Open Library is busy" + countdown (503 + `Retry-After`) |

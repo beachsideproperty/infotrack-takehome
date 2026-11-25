@@ -42,6 +42,9 @@ public sealed class GeminiStatus(IOptions<GeminiOptions> options, GeminiModelGat
         GeminiModelGate.Failure.TimedOut => "timedOut",
         GeminiModelGate.Failure.RateLimited => "rateLimited",
         GeminiModelGate.Failure.DailyQuota => "dailyQuota",
+        GeminiModelGate.Failure.Unreachable => "unreachable",
+        GeminiModelGate.Failure.Rejected => "rejected",
+        GeminiModelGate.Failure.BadAnswer => "badAnswer",
         _ => "error",
     };
 }

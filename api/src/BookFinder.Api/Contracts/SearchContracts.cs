@@ -79,6 +79,9 @@ public static class SearchContractMapping
         LlmFailureReason.TimedOut => "timedOut",
         LlmFailureReason.RateLimited => "rateLimited",
         LlmFailureReason.DailyQuota => "dailyQuota",
+        LlmFailureReason.Unreachable => "unreachable",
+        LlmFailureReason.Rejected => "rejected",
+        LlmFailureReason.BadAnswer => "badAnswer",
         _ => "error",
     };
 

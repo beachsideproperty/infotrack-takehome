@@ -54,7 +54,7 @@ function object<T>(shape: Shape<T>): Check {
   }
 }
 
-const aiIssue = oneOf<AiIssue>({ notConfigured: true, overloaded: true, timedOut: true, rateLimited: true, dailyQuota: true, error: true })
+const aiIssue = oneOf<AiIssue>({ notConfigured: true, overloaded: true, timedOut: true, rateLimited: true, dailyQuota: true, unreachable: true, rejected: true, badAnswer: true, error: true })
 
 const matchDetails = object<MatchDetails>({
   title: oneOf<MatchDetails['title']>({ exact: true, near: true, none: true }),
