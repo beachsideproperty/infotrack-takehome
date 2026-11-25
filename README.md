@@ -9,11 +9,6 @@ InfoTrack "Find That Book" take-home: React + TypeScript frontend, .NET 10 Web A
 - **Live demo:** https://infotrack-takehome.vercel.app
 - **API health:** https://infotrack-takehome.onrender.com/health (Render free tier: the first request after idling can take ~50 s)
 
-<p>
-  <img src="assets/screenshots/desktop.png" alt="Desktop: searching 'tolkien hobbit illustrated deluxe 1937' shows The Hobbit by J.R.R. Tolkien as the best match, with the graphic-novel adaptation and box sets below" width="72%">
-  <img src="assets/screenshots/mobile.png" alt="Mobile: the same best match card for The Hobbit" width="24%">
-</p>
-
 **Contents:** [Approach and priorities](#approach-and-priorities) · [Run locally](#run-locally) · [How it works](#how-it-works) (matching hierarchy) · [Failures and unclear results](#failures-and-unclear-results) · [Assumptions and trade-offs](#assumptions-and-trade-offs) · [Testing strategy](#testing-strategy) · [Future improvements](#future-improvements) · [API reference](api/README.md)
 
 ## Approach and priorities
@@ -74,8 +69,8 @@ Try `curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{
 ### Tests
 
 ```bash
-cd api && dotnet test        # 197 tests, offline, ~1 s
-cd web && npm test           # 43 tests, API mocked
+cd api && dotnet test        # 223 tests, offline, ~1 s
+cd web && npm test           # 45 tests, API mocked
 cd web && npm run build      # type-check + production build
 ```
 
@@ -152,7 +147,7 @@ No test calls Gemini or the network; Open Library is replayed from recorded JSON
 
 | Layer | What's covered |
 |---|---|
-| Unit | Normalizing, title and author matching, every tier, adaptation demotion, collections, series, ranking order and determinism, the best-match rule, the fallback parser and its free-text matching, year checks, template sentences |
+| Unit | Normalizing (including numbers in titles), title and author matching, every tier, adaptation demotion, collections, series, ranking order and determinism, the best-match rule, the fallback parser and its free-text matching, year checks, template sentences |
 | Golden queries | The spec's 11 queries end to end through the real search service and Open Library client, with Gemini replaced by the readings it actually returned, so the tests pin what *code* decides. Every query also runs with Gemini "down", including the known limits |
 | Clients | Gemini: model fallback, hanging models, cooldowns and the daily reset (fake clock), our rate cap, failure reasons, error-body parsing, junk JSON. Open Library: parsing, work-record authors, caching, retry, timeouts |
 | API | Response shape, `/health`, validation messages, malformed JSON, 429/502/503 ProblemDetails, fallback flags, CORS |
