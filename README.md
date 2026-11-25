@@ -1,5 +1,7 @@
 # Book Finder
 
+[![CI](https://github.com/beachsideproperty/infotrack-takehome/actions/workflows/ci.yml/badge.svg)](https://github.com/beachsideproperty/infotrack-takehome/actions/workflows/ci.yml)
+
 Paste a messy blob of whatever you remember about a book (a title, an author, a character, a year) and get back the book it most likely means, with a one-line reason grounded in Open Library data.
 
 InfoTrack "Find That Book" take-home. React + TypeScript frontend, .NET 10 Web API, Gemini for parsing and explanations, Open Library for book data.
@@ -83,6 +85,8 @@ After an intended change to the API's JSON, refresh the saved contract (then upd
 ```bash
 cd api && UPDATE_CONTRACTS=1 dotnet test --filter Category=Contract
 ```
+
+CI (GitHub Actions, `.github/workflows/ci.yml`) runs the same checks on every push, plus lint and a Docker build of the API. It needs no secrets.
 
 Refresh the recorded Open Library responses used by the golden tests (hits the live API, politely paced):
 
