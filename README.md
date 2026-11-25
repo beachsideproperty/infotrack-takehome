@@ -75,7 +75,7 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 188 tests, offline, ~1 s
+cd api && dotnet test        # 197 tests, offline, ~1 s
 cd web && npm test           # 43 tests (Vitest + Testing Library), API mocked
 cd web && npm run build      # type-check + production build
 ```
@@ -106,6 +106,8 @@ cd api && RECORD_FIXTURES=1 dotnet test --filter Category=Golden
 | `SEARCH_RATE_LIMIT_PER_MINUTE` | API | Optional. Searches per client IP per minute before a 429. Default 10 |
 | `ALLOWED_ORIGINS` | API | Comma-separated origins allowed by CORS, no trailing slash |
 | `PORT` | API | Port to bind on `0.0.0.0`. Render sets it (default 10000) |
+| `APP_VERSION` | API | Optional. Overrides the version `/health` reports (default: the assembly version) |
+| `RENDER_GIT_COMMIT` | API | Set by Render; `/health` shows its first 7 characters as `commit` |
 | `VITE_API_URL` | Web | API base URL. Baked in at build time, so never put secrets here |
 
 See `.env.example`.
@@ -247,7 +249,7 @@ Every case has a defined behaviour, and the query is never lost:
 - **Series and box sets.** Gemini flags series queries ("harry potter"): the books in the series are listed with no best match, and the explanations say why. Box sets, omnibuses and multi-title volumes are capped at tier E because the brief asks for works.
 - **Best-match card is earned.** `hasBestMatch` is true only when the top result is tier A–C and beats the runner-up on match strength, or is equally strong but read 5× more. Never for series, author-only or weak matches.
 - **Author-only popularity.** `search.json?author_key=…&sort=readinglog` (most reading-log entries first) replaces `/authors/{id}/works.json`, which can't sort by popularity. The author key comes from the full name Gemini supplies ("dickens" alone ranks Monica Dickens first in Open Library's author search).
-- **Years.** A year breaks ties and is cited in the explanation. Code keeps a year only if it appears in the query and isn't part of the title ("1984 by orwell"), so the model can't invent one. Edition words ("illustrated", "deluxe") are ignored, since results are works, not editions.
+- **Years.** A year breaks ties and is cited in the explanation. Code keeps a year only if it appears in the query and isn't part of the title, in digits or spelled out ("1984 by orwell" → *Nineteen Eighty-Four*, no year), so the model can't invent one. The spelled-out case was found by the Gemini eval: both models return 1984 as a year there despite the prompt. Edition words ("illustrated", "deluxe") are ignored, since results are works, not editions.
 - **Never an LLM-only guess.** Every result comes from Open Library. Gemini only proposes what to search for and phrases the explanation; its output is schema-constrained, trimmed and capped, and the explanation prompt only sees fields we fetched plus how code classified the match. The year is sent to it only when it matched.
 - **Prompt injection.** The query is passed as a JSON string labelled as data, the system prompt says to ignore instructions inside it, and the response must match a JSON schema. The worst a malicious query can do is produce odd hypotheses, which then have to match real Open Library records.
 - **Gemini model choice.** Measured on Nov 24, 2026 on the free tier: `gemini-3.8-flash` timed out, returned 503 or was rate-limited on nearly every call (and allows only 5 requests/minute), while `gemini-3.5-flash-lite` answered in about 1 s and read every golden query correctly. Both models are configurable.
@@ -273,7 +275,7 @@ Every case has a defined behaviour, and the query is never lost:
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 188 tests offline in about a second; `cd web && npm test` runs 43 web tests with the API mocked. No test calls Gemini or the network.
+`cd api && dotnet test` runs 197 tests offline in about a second; `cd web && npm test` runs 43 web tests with the API mocked. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
