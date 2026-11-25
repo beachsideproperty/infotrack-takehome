@@ -1,0 +1,129 @@
+{
+  "query": "blue cover book about a whale and a lighthouse",
+  "interpretedAs": [
+    {
+      "keywords": [
+        "whale",
+        "lighthouse"
+      ],
+      "isSeries": false
+    }
+  ],
+  "mode": "noMatch",
+  "results": [
+    {
+      "title": "The Whale",
+      "authors": [
+        "Cynthia Rylant"
+      ],
+      "contributors": [],
+      "firstPublishYear": 2003,
+      "openLibraryId": "OL64093W",
+      "url": "https://openlibrary.org/works/OL64093W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/1315858-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "none",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": true
+      },
+      "explanation": "“Whale” is in the title, but there was no title or author to confirm it."
+    },
+    {
+      "title": "Heroes of White Whale Lighthouse",
+      "authors": [
+        "Alison Milford",
+        "Adam Horsepool",
+        "Collins Big Cat"
+      ],
+      "contributors": [],
+      "firstPublishYear": 2020,
+      "openLibraryId": "OL25256777W",
+      "url": "https://openlibrary.org/works/OL25256777W",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "none",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": true
+      },
+      "explanation": "“Whale” and “Lighthouse” are in the title, but there was no title or author to confirm it."
+    },
+    {
+      "title": "Ships, Whales, Lighthouses and Mermaids",
+      "authors": [
+        "Cynthia Gallant-Simpson"
+      ],
+      "contributors": [],
+      "firstPublishYear": 2013,
+      "openLibraryId": "OL39896251W",
+      "url": "https://openlibrary.org/works/OL39896251W",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "none",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": true
+      },
+      "explanation": "Open Library's keyword search matched this book, but no title or author words confirm it."
+    },
+    {
+      "title": "The Turtle",
+      "authors": [
+        "Cynthia Rylant"
+      ],
+      "contributors": [],
+      "firstPublishYear": 2005,
+      "openLibraryId": "OL64167W",
+      "url": "https://openlibrary.org/works/OL64167W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/436880-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "none",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": true
+      },
+      "explanation": "Open Library's keyword search matched this book, but no title or author words confirm it."
+    },
+    {
+      "title": "The Lighthouse Keeper's Rescue",
+      "authors": [
+        "David Armitage"
+      ],
+      "contributors": [],
+      "firstPublishYear": 2001,
+      "openLibraryId": "OL7983533W",
+      "url": "https://openlibrary.org/works/OL7983533W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/280088-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "none",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": true
+      },
+      "explanation": "“Lighthouse” is in the title, but there was no title or author to confirm it."
+    }
+  ],
+  "hasBestMatch": false,
+  "parser": "llm",
+  "explanations": "template",
+  "aiIssue": "error"
+}

@@ -53,9 +53,13 @@ function withTimeout(signal: AbortSignal | undefined, ms: number): AbortSignal |
   return AbortSignal.any([signal, timeout])
 }
 
-interface ProblemDetails {
+/** RFC 7807 error body. Only `title` and `detail` are read; the rest is listed so the contract test knows it. */
+export interface ProblemDetails {
+  type?: string
   title?: string
+  status?: number
   detail?: string
+  errors?: Record<string, string[]>
 }
 
 /** POST /api/search. Resolves with the response or throws a {@link SearchError}; an aborted search rethrows the AbortError. */

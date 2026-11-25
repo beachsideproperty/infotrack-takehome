@@ -1,0 +1,9 @@
+{
+  "query": "pizza recipe",
+  "interpretedAs": [],
+  "mode": "noMatch",
+  "results": [],
+  "hasBestMatch": false,
+  "parser": "llm",
+  "explanations": "template"
+}

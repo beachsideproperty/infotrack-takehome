@@ -1,0 +1,133 @@
+{
+  "query": "tolkien hobbit illustrated deluxe 1937",
+  "interpretedAs": [
+    {
+      "title": "The Hobbit",
+      "author": "J.R.R. Tolkien",
+      "keywords": [
+        "illustrated",
+        "deluxe"
+      ],
+      "year": 1937,
+      "isSeries": false
+    }
+  ],
+  "mode": "match",
+  "results": [
+    {
+      "title": "The Hobbit",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1937,
+      "openLibraryId": "OL27482W",
+      "url": "https://openlibrary.org/works/OL27482W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14627509-L.jpg",
+      "matchTier": "A",
+      "match": {
+        "title": "exact",
+        "author": "primary",
+        "yearMatched": true,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "LLM says The Hobbit."
+    },
+    {
+      "title": "The Hobbit",
+      "authors": [
+        "Charles Dixon",
+        "Sean Deming",
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1990,
+      "openLibraryId": "OL219602W",
+      "url": "https://openlibrary.org/works/OL219602W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8406766-L.jpg",
+      "matchTier": "B",
+      "match": {
+        "title": "exact",
+        "author": "contributor",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": true,
+        "keywordOnly": false
+      },
+      "explanation": "LLM says The Hobbit."
+    },
+    {
+      "title": "The Hobbit & The Lord of the Rings [collection/set]",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1979,
+      "openLibraryId": "OL14926019W",
+      "url": "https://openlibrary.org/works/OL14926019W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/255844-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": true,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "LLM says The Hobbit & The Lord of the Rings [collection/set]."
+    },
+    {
+      "title": "Novels (Fellowship of the Ring / Hobbit)",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1954,
+      "openLibraryId": "OL27496W",
+      "url": "https://openlibrary.org/works/OL27496W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/1885351-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": true,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "LLM says Novels (Fellowship of the Ring / Hobbit)."
+    },
+    {
+      "title": "Poems from The hobbit",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1999,
+      "openLibraryId": "OL14933471W",
+      "url": "https://openlibrary.org/works/OL14933471W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/392814-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "LLM says Poems from The hobbit."
+    }
+  ],
+  "hasBestMatch": true,
+  "parser": "llm",
+  "explanations": "llm"
+}

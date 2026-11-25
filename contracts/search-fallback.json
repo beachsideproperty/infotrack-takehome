@@ -1,0 +1,133 @@
+{
+  "query": "tolkien hobbit illustrated deluxe 1937",
+  "interpretedAs": [
+    {
+      "keywords": [
+        "illustrated",
+        "deluxe"
+      ],
+      "year": 1937,
+      "isSeries": false,
+      "text": "tolkien hobbit"
+    }
+  ],
+  "mode": "match",
+  "results": [
+    {
+      "title": "The Hobbit",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1937,
+      "openLibraryId": "OL27482W",
+      "url": "https://openlibrary.org/works/OL27482W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14627509-L.jpg",
+      "matchTier": "A",
+      "match": {
+        "title": "exact",
+        "author": "primary",
+        "yearMatched": true,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Exact title match; J.R.R. Tolkien is the primary author on the work record; first published in 1937, the year you gave."
+    },
+    {
+      "title": "The Hobbit",
+      "authors": [
+        "Charles Dixon",
+        "Sean Deming",
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1990,
+      "openLibraryId": "OL219602W",
+      "url": "https://openlibrary.org/works/OL219602W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/8406766-L.jpg",
+      "matchTier": "B",
+      "match": {
+        "title": "exact",
+        "author": "contributor",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": true,
+        "keywordOnly": false
+      },
+      "explanation": "Exact title, but Charles Dixon is listed first on this version; J.R.R. Tolkien is credited after them, so it ranks below the original."
+    },
+    {
+      "title": "The Lord of the Rings",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1954,
+      "openLibraryId": "OL27448W",
+      "url": "https://openlibrary.org/works/OL27448W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14625765-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "J.R.R. Tolkien is the primary author, but \"The Lord of the Rings\" isn't the title you typed."
+    },
+    {
+      "title": "The Fellowship of the Ring",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1954,
+      "openLibraryId": "OL27513W",
+      "url": "https://openlibrary.org/works/OL27513W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14627060-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "J.R.R. Tolkien is the primary author, but \"The Fellowship of the Ring\" isn't the title you typed."
+    },
+    {
+      "title": "The Two Towers",
+      "authors": [
+        "J.R.R. Tolkien"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1954,
+      "openLibraryId": "OL27479W",
+      "url": "https://openlibrary.org/works/OL27479W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/14627564-L.jpg",
+      "matchTier": "E",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "J.R.R. Tolkien is the primary author, but \"The Two Towers\" isn't the title you typed."
+    }
+  ],
+  "hasBestMatch": true,
+  "parser": "fallback",
+  "explanations": "template",
+  "aiIssue": "overloaded"
+}

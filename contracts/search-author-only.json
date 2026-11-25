@@ -1,0 +1,132 @@
+{
+  "query": "dickens",
+  "interpretedAs": [
+    {
+      "author": "Charles Dickens",
+      "keywords": [],
+      "isSeries": false
+    }
+  ],
+  "mode": "authorOnly",
+  "author": {
+    "name": "Charles Dickens",
+    "openLibraryId": "OL24638A",
+    "url": "https://openlibrary.org/authors/OL24638A"
+  },
+  "results": [
+    {
+      "title": "A Tale of Two Cities",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1800,
+      "openLibraryId": "OL8193465W",
+      "url": "https://openlibrary.org/works/OL8193465W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13301713-L.jpg",
+      "matchTier": "D",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Primary author on the work record. Most-read Charles Dickens work in Open Library reading logs."
+    },
+    {
+      "title": "Great Expectations",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1861,
+      "openLibraryId": "OL8721462W",
+      "url": "https://openlibrary.org/works/OL8721462W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13322313-L.jpg",
+      "matchTier": "D",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Primary author on the work record. 2nd most-read Charles Dickens work in Open Library reading logs."
+    },
+    {
+      "title": "Oliver Twist",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1822,
+      "openLibraryId": "OL8193478W",
+      "url": "https://openlibrary.org/works/OL8193478W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/13300802-L.jpg",
+      "matchTier": "D",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Primary author on the work record. 3rd most-read Charles Dickens work in Open Library reading logs."
+    },
+    {
+      "title": "A Christmas Carol",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1843,
+      "openLibraryId": "OL32466W",
+      "url": "https://openlibrary.org/works/OL32466W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/12875748-L.jpg",
+      "matchTier": "D",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Primary author on the work record. 4th most-read Charles Dickens work in Open Library reading logs."
+    },
+    {
+      "title": "David Copperfield",
+      "authors": [
+        "Charles Dickens"
+      ],
+      "contributors": [],
+      "firstPublishYear": 1800,
+      "openLibraryId": "OL8662242W",
+      "url": "https://openlibrary.org/works/OL8662242W",
+      "coverUrl": "https://covers.openlibrary.org/b/id/1048892-L.jpg",
+      "matchTier": "D",
+      "match": {
+        "title": "none",
+        "author": "primary",
+        "yearMatched": false,
+        "seriesMember": false,
+        "collection": false,
+        "derivative": false,
+        "keywordOnly": false
+      },
+      "explanation": "Primary author on the work record. 5th most-read Charles Dickens work in Open Library reading logs."
+    }
+  ],
+  "hasBestMatch": false,
+  "parser": "llm",
+  "explanations": "template",
+  "aiIssue": "error"
+}

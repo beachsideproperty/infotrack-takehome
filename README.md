@@ -73,9 +73,15 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 163 tests, offline, ~1 s
-cd web && npm test           # 33 tests (Vitest + Testing Library), API mocked
+cd api && dotnet test        # 171 tests, offline, ~1 s
+cd web && npm test           # 43 tests (Vitest + Testing Library), API mocked
 cd web && npm run build      # type-check + production build
+```
+
+After an intended change to the API's JSON, refresh the saved contract (then update `web/src/lib/types.ts` until `npm test` passes):
+
+```bash
+cd api && UPDATE_CONTRACTS=1 dotnet test --filter Category=Contract
 ```
 
 Refresh the recorded Open Library responses used by the golden tests (hits the live API, politely paced):
@@ -112,6 +118,7 @@ api/                         .NET 10 solution (BookFinder.sln) + Dockerfile
 web/                         Vite + React + TypeScript + Tailwind v4 (+ Motion, Vitest)
   src/lib                      API client and types, search state, labels, validation
   src/components               One component per screen element from the designs
+contracts/                   Real API responses saved by the API tests and checked against the web app's types
 docker-compose.yml
 ```
 
@@ -259,7 +266,7 @@ Every case has a defined behaviour, and the query is never lost:
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 163 tests offline in about a second; `cd web && npm test` runs 33 UI tests with the API mocked. No test calls Gemini or the network.
+`cd api && dotnet test` runs 171 tests offline in about a second; `cd web && npm test` runs 43 web tests with the API mocked. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
@@ -268,6 +275,7 @@ Every case has a defined behaviour, and the query is never lost:
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
 | Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, `/health` status from the gate (ok, limited, unavailable, our own cap), cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
+| Contract | The API tests save a real response for each kind of result (best match, author only, series, keyword guesses, not a book, fallback), a validation error and `/health` to `contracts/*.json`, and fail if the output changes. A web test checks the same files against the TypeScript types: an unknown field, a missing required field or an unknown enum value fails. The checks are typed against the interfaces, so TypeScript makes them list every field. The two sides can't drift apart unnoticed |
 | API | `WebApplicationFactory` with fakes: response contract, `/health` AI status (no secrets), author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
 
 ## Future improvements
