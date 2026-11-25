@@ -9,7 +9,32 @@ InfoTrack "Find That Book" take-home. React + TypeScript frontend, .NET 10 Web A
 - **Live demo:** https://infotrack-takehome.vercel.app (web on Vercel)
 - **API health:** https://infotrack-takehome.onrender.com/health (API on Render, free tier: the first request after idling can take ~50 s)
 
-> **Status:** feature-complete; final polish in progress.
+<p>
+  <img src="assets/screenshots/desktop.png" alt="Desktop: searching 'tolkien hobbit illustrated deluxe 1937' shows The Hobbit by J.R.R. Tolkien as the best match, with the graphic-novel adaptation and box sets below" width="72%">
+  <img src="assets/screenshots/mobile.png" alt="Mobile: the same best match card for The Hobbit" width="24%">
+</p>
+
+**Contents:** [Approach and priorities](#approach-and-priorities) · [Run locally](#run-locally) · [API](#api) · [Implementation overview](#implementation-overview) (matching hierarchy) · [Failures and unclear results](#failures-and-unclear-results) · [Assumptions and design decisions](#assumptions-and-design-decisions) · [Testing strategy](#testing-strategy) · [Future improvements](#future-improvements)
+
+## Approach and priorities
+
+The heart of the brief is deciding which book a messy query means, and saying why. I put most of the time there and into keeping it reliable, and kept everything else simple.
+
+**Order of work**
+
+1. **Deploy first.** A hello-world API and web page went live on Render and Vercel before any feature, so hosting, CORS and environment variables couldn't surprise me at the end.
+2. **A deterministic core with tests.** Normalising, the A–E matching hierarchy and ranking are plain code, tested with golden queries over recorded Open Library data, before any LLM was involved.
+3. **Gemini in a narrow role.** It reads the query and phrases the explanations; code decides everything else. A rule-based parser and template explanations sit behind it, so the app works without it.
+4. **Hardening from production evidence.** Render logs showed the real failures were Google overloads and bursts against the free tier's per-minute limit, not bad answers. That led to our own rate cap, cooldowns, splitting the two calls across models, caching, specific failure reasons, and an eval that measures how well Gemini reads queries.
+5. **The UI from the designs,** with every state built, not just the happy path: loading, ranked lists, author pages, no match, guesses, the fallback banner and each error.
+6. **Making it easy to review:** this README, CI, and contract tests that keep the API and web app in step.
+
+**Where I went deep**
+
+- **Matching and data quality:** primary authors vs contributors from work records, detecting adaptations without role data, collapsing duplicate works, series, box sets, typos, accents, and name variants.
+- **LLM integration and resilience:** schema-constrained output with code-side checks, measured model choice, staying inside the free tier, and a fallback that still finds most books.
+
+**Deliberately left out:** chips to refine a search (the "Searched for …" line and an editable query cover most of the need); decades for unknown years (not in the data); real streaming progress (a timed loader over one request is honest enough at 3–6 s); a database or shared cache (one instance, in memory is enough); accounts and search history (out of scope).
 
 ## Why .NET 10 and not .NET 8
 
@@ -310,4 +335,15 @@ What it changed:
 
 ## Future improvements
 
-_To come._
+In rough priority order:
+
+1. **Real progress and partial results.** Stream stages over server-sent events and show the search-row results while work records load, instead of a timed loader.
+2. **A third LLM option.** Overload, not accuracy, is the main failure. A paid tier or a second provider behind the same `ILlmQueryParser` port would make the fallback rare.
+3. **A persistent, shared cache** (Redis) so restarts and extra instances don't start cold, warmed with popular queries.
+4. **A bigger eval, run on a schedule.** More vague, multilingual and adversarial queries; track accuracy and latency over time; compare prompt changes before shipping them.
+5. **Smarter basic matching** for when Gemini is down: tell "1984" the title from 1984 the year, and prefer well-read works over obscure literal title matches.
+6. **Editions.** Results are works, as the brief asks. "illustrated deluxe" could also suggest matching editions.
+7. **Refining a search:** "Did you mean" for keyword guesses, and chips to add an author or year.
+8. **End-to-end browser tests** (Playwright against `docker compose`) in CI.
+9. **Observability:** structured logs to a dashboard, and alerts on fallback rate and latency.
+10. **No cold starts:** a paid Render instance or a host that doesn't sleep.
