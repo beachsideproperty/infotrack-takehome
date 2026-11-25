@@ -1,3 +1,4 @@
+import type { Health } from '../lib/api'
 import type { BookResult, MatchDetails, SearchResponse } from '../lib/types'
 
 const noMatch: MatchDetails = {
@@ -46,9 +47,14 @@ type Reply = { status?: number; body?: unknown; headers?: Record<string, string>
  * (the last one repeats). Returns the list of search queries sent.
  */
 export function mockApi(...replies: Reply[]): string[] {
+  return mockApiWithHealth({ status: 'ok', version: '0.1.0' }, ...replies)
+}
+
+/** Same as {@link mockApi}, with a chosen /health body. */
+export function mockApiWithHealth(health: Health, ...replies: Reply[]): string[] {
   const sent: string[] = []
   const fetchMock = async (url: string, init?: RequestInit) => {
-    if (url.endsWith('/health')) return json({ status: 'ok', version: '0.1.0' })
+    if (url.endsWith('/health')) return json(health)
     sent.push((JSON.parse(String(init?.body)) as { query: string }).query)
     const reply = replies[Math.min(sent.length - 1, replies.length - 1)]
     return json(reply.body ?? {}, reply.status ?? 200, reply.headers)

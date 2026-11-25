@@ -1,4 +1,4 @@
-import type { SearchResponse } from './types'
+import type { AiIssue, SearchResponse } from './types'
 
 export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8080').replace(/\/+$/, '')
 
@@ -8,6 +8,14 @@ const SEARCH_TIMEOUT_MS = 60_000
 export interface Health {
   status: string
   version: string
+  commit?: string
+  /** Gemini as the server currently sees it (from recent calls; the server doesn't probe Google). */
+  ai?: AiHealth
+}
+
+export interface AiHealth {
+  status: 'ok' | 'limited' | 'unavailable' | 'notConfigured'
+  models: { model: string; available: boolean; issue?: AiIssue; retryInSeconds?: number; requestsLastMinute: number }[]
 }
 
 export async function getHealth(signal?: AbortSignal): Promise<Health> {

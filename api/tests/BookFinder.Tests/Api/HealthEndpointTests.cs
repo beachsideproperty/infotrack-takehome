@@ -23,6 +23,17 @@ public class HealthEndpointTests(WebApplicationFactory<Program> factory) : IClas
     }
 
     [Fact]
+    public async Task Health_reports_gemini_status_without_secrets()
+    {
+        var json = await factory.CreateClient().GetStringAsync("/health");
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+
+        var status = doc.RootElement.GetProperty("ai").GetProperty("status").GetString();
+        Assert.Contains(status, new[] { "ok", "limited", "unavailable", "notConfigured" });
+        Assert.DoesNotContain("key", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Unknown_route_returns_problem_details()
     {
         var response = await factory.CreateClient().GetAsync("/nope");

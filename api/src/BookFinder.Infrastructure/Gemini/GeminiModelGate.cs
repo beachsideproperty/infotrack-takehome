@@ -82,6 +82,25 @@ public sealed class GeminiModelGate(IOptions<GeminiOptions> options, TimeProvide
         }
     }
 
+    /// <summary>What we currently know about a model, without calling it. For <c>/health</c>.</summary>
+    /// <param name="BlockedBy">Why it would be skipped right now, or null when it's available.</param>
+    public sealed record ModelSnapshot(string Model, Failure? BlockedBy, TimeSpan? AvailableIn, int RequestsLastMinute);
+
+    public ModelSnapshot Snapshot(string model)
+    {
+        var now = time.GetUtcNow();
+        lock (_lock)
+        {
+            var state = State(model);
+            var recent = state.Recent.Where(t => now - t < TimeSpan.FromMinutes(1)).ToList();
+            if (state.CoolingUntil > now)
+                return new ModelSnapshot(model, state.CoolingBecause, state.CoolingUntil - now, recent.Count);
+            if (recent.Count >= options.Value.RequestsPerMinutePerModel)
+                return new ModelSnapshot(model, Failure.RateLimited, recent[0] + TimeSpan.FromMinutes(1) - now, recent.Count);
+            return new ModelSnapshot(model, null, null, recent.Count);
+        }
+    }
+
     public void ReportSuccess(string model)
     {
         lock (_lock) State(model).CoolingUntil = DateTimeOffset.MinValue;

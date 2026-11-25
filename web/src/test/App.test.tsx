@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { EMPTY_QUERY_MESSAGE } from '../lib/validate'
-import { book, mockApi, response } from './fixtures'
+import { book, mockApi, mockApiWithHealth, response } from './fixtures'
 
 const hobbit = response({
   hasBestMatch: true,
@@ -148,6 +148,23 @@ describe('App', () => {
     await searchFor('tolkien hobbit')
 
     expect(await screen.findByText(/Today’s free AI quota is used up/)).toBeInTheDocument()
+  })
+
+  it('warns in the header when every Gemini model is resting, but not when one still works', async () => {
+    const resting = (issue: 'overloaded' | 'dailyQuota') => ({ model: 'm', available: false, issue, requestsLastMinute: 0 })
+    mockApiWithHealth({ status: 'ok', version: '1', ai: { status: 'unavailable', models: [resting('dailyQuota'), resting('dailyQuota')] } })
+    const { unmount } = render(<App />)
+    expect(await screen.findByText('Today’s free AI quota is used up: searches use basic matching until it resets.')).toBeInTheDocument()
+    unmount()
+
+    mockApiWithHealth({
+      status: 'ok',
+      version: '1',
+      ai: { status: 'limited', models: [resting('overloaded'), { model: 'n', available: true, requestsLastMinute: 1 }] },
+    })
+    render(<App />)
+    expect(await screen.findByRole('link', { name: 'How it works' })).toBeInTheDocument()
+    expect(screen.queryByText('Basic matching')).not.toBeInTheDocument()
   })
 
   it('runs an example chip and focuses the search box on "/"', async () => {

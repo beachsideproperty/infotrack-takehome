@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getHealth } from './api'
+import { getHealth, type AiHealth } from './api'
 
 export type ApiStatus =
   | { state: 'waking' }
-  | { state: 'connected'; version: string }
+  | { state: 'connected'; version: string; ai?: AiHealth }
   | { state: 'unreachable' }
 
 // Render's free tier sleeps; a cold start can take ~50 s, so keep retrying for a minute.
@@ -26,7 +26,7 @@ export function useApiStatus() {
       const timeout = setTimeout(() => controller?.abort(), REQUEST_TIMEOUT_MS)
       try {
         const health = await getHealth(controller.signal)
-        if (!cancelled) setStatus({ state: 'connected', version: health.version })
+        if (!cancelled) setStatus({ state: 'connected', version: health.version, ai: health.ai })
       } catch {
         if (cancelled) return
         if (Date.now() - startedAt >= GIVE_UP_AFTER_MS) setStatus({ state: 'unreachable' })

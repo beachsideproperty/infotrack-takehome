@@ -36,6 +36,7 @@ public static class DependencyInjection
             if (int.TryParse(configuration["GEMINI_RPM_PER_MODEL"], out var rpm) && rpm > 0) o.RequestsPerMinutePerModel = rpm;
         });
         services.AddSingleton<GeminiModelGate>();
+        services.AddSingleton<GeminiStatus>();
         services.AddHttpClient<GeminiClient>((sp, http) =>
         {
             http.BaseAddress = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GeminiOptions>>().Value.BaseAddress;

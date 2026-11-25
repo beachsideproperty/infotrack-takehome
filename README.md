@@ -73,8 +73,8 @@ curl -s localhost:8080/api/search -H 'Content-Type: application/json' -d '{"quer
 ### Tests
 
 ```bash
-cd api && dotnet test        # 157 tests, offline, ~1 s
-cd web && npm test           # 32 tests (Vitest + Testing Library), API mocked
+cd api && dotnet test        # 163 tests, offline, ~1 s
+cd web && npm test           # 33 tests (Vitest + Testing Library), API mocked
 cd web && npm run build      # type-check + production build
 ```
 
@@ -119,7 +119,7 @@ docker-compose.yml
 
 | Method | Path | Response |
 |---|---|---|
-| GET | `/health` | `200 { "status": "ok", "version": "0.1.0", "commit": "abc1234" }` (`commit` only on Render) |
+| GET | `/health` | `200 { "status": "ok", "version": "0.1.0", "commit": "abc1234", "ai": { … } }` (`commit` only on Render; `ai` below) |
 | POST | `/api/search` | `200` search outcome (below); `400` bad input; `429` too many searches from this client; `502` Open Library down; `503` Open Library rate-limiting |
 
 ```jsonc
@@ -153,6 +153,7 @@ docker-compose.yml
 }
 ```
 
+- `/health` → `ai` is Gemini as the server currently sees it, built from recent calls and never by calling Google, so it costs nothing to check: `{ "status": "ok" | "limited" | "unavailable" | "notConfigured", "models": [{ "model", "available", "issue"?, "retryInSeconds"?, "requestsLastMinute" }] }`. `limited` means one model is resting and the other still works. `/health` stays 200 either way, so Render never restarts the API because Google is busy. The web app shows "Basic matching" in the header when every model is resting.
 - Each result also has `match: { title: "exact"|"near"|"none", author: "primary"|"contributor"|"none", yearMatched, seriesMember, collection, derivative, keywordOnly }`, so the UI can label it precisely.
 - `aiIssue` appears only when Gemini wasn't used, for the parse or else the explanations: `"overloaded"` (Google's 503 "high demand"), `"timedOut"`, `"rateLimited"` (per-minute, Google's or our own cap), `"dailyQuota"` (free tier used up until midnight Pacific), `"notConfigured"` or `"error"`. When the two models failed differently it reports the one that clears soonest, since that's when trying again helps.
 - `noMatch` can still carry results: "closest guesses" from a keyword search, when the query described a book without naming a title or author.
@@ -258,7 +259,7 @@ Every case has a defined behaviour, and the query is never lost:
 
 ## Testing strategy
 
-`cd api && dotnet test` runs 157 tests offline in about a second; `cd web && npm test` runs 32 UI tests with the API mocked. No test calls Gemini or the network.
+`cd api && dotnet test` runs 163 tests offline in about a second; `cd web && npm test` runs 33 UI tests with the API mocked. No test calls Gemini or the network.
 
 | Layer | What's covered |
 |---|---|
@@ -266,8 +267,8 @@ Every case has a defined behaviour, and the query is never lost:
 | Web (Vitest + Testing Library) | Every result mode (best match, ranked list, series, author only, keyword guesses), "Did you mean" re-search, inline validation without calling the API, server 400 inline, 429 countdown, 502 card with Try again re-running the same query, AI-unavailable banner, example chips, `/` shortcut, `?q=` links, a slow older answer never overwriting a newer one, label and "Searched for" wording, the loading-step timer |
 | Caching | Same query twice (differently typed) → one Gemini call each for parse and explanations; degraded results expire after 2 minutes but Gemini's reading is reused; explanations skipped after a parse fallback |
 | Golden queries | The 11 queries from the spec, end to end through the real `SearchService` and `OpenLibraryClient`, replaying recorded Open Library JSON (`tests/.../Fixtures/openlibrary`). Gemini is replaced by the hypotheses it actually returned, so the tests pin down what code decides given a reading. Three more run with Gemini "down" to prove the fallback still finds the book |
-| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
-| API | `WebApplicationFactory` with fakes: response contract, author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
+| Clients | Gemini: key in a header (never the URL), fallback model on 503/429/404, a hanging model leaves time for the fallback, explanations start on the other model, `/health` status from the gate (ok, limited, unavailable, our own cap), cooldowns (503 → 20 s, 429 → Google's retry delay, daily quota → midnight Pacific, with a fake clock), the per-minute cap routing to the other model, the failure reason reported (and kept while a model is skipped on cooldown), Google error-body parsing, junk JSON → unavailable. Open Library: parsing, work-record authors, 404 → null, caching by URL, retry once, timeout and 429 handling, URL escaping |
+| API | `WebApplicationFactory` with fakes: response contract, `/health` AI status (no secrets), author link on author-only results, 400 messages (empty, whitespace, 301 chars; 300 is fine), malformed JSON, 429 per-client limit with `Retry-After`, 502 and 503 ProblemDetails, fallback flags, CORS preflight |
 
 ## Future improvements
 
